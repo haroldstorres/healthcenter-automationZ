@@ -84,6 +84,7 @@ input[type=date]::-webkit-calendar-picker-indicator{display:none}
 .dpp-f button{border:0;background:transparent;color:var(--pr);font-weight:600;cursor:pointer;padding:4px 8px;border-radius:8px}
 .dpp-f button:disabled{color:#a9b4bd;cursor:default}
 </style></head><body><div id="root"></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import{firebaseConfig as C}from'./firebase-config.js';
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -1040,6 +1041,97 @@ const DH_SYSTEMS=[['circ','Circulatory',/hypertens|\bbp\b|heart|cardi|angina|str
 const DH_SPOTS={nerv:[50,13],endo:[50,29],resp:[41,42],circ:[57,44],dige:[50,60],urin:[50,72],repr:[50,82],musc:[27,100],inte:[15,62]};
 let DH={sys:'all',yr:'all'};
 const dhSystemOf=v=>{const t=(v.dx||'')+' '+(v.cc||'');const m=DH_SYSTEMS.find(x=>x[2]&&x[2].test(t));return m?m[0]:'othr'};
+/* 3D body map (three.js + open-anatomy-3d models, loaded only when needed) */
+const DH3_KEYS={
+  circ:['heart','aorta','coronary_arteries','vena_cava_inferior','vena_cava_superior','pulmonary_vessels','carotid_l','carotid_r','arteries_abdomen','arteries_thorax','arteries_head','arteries_arm_l','arteries_arm_r','arteries_leg_l','arteries_leg_r','arteries_pelvis','veins_abdomen','veins_thorax','veins_arm_l','veins_arm_r','veins_leg_l','veins_leg_r','veins_pelvis'],
+  resp:['lung_l','lung_r','bronchi','trachea','larynx','pharynx','diaphragm'],
+  dige:['stomach','liver','gallbladder','pancreas','small_intestine','colon','esophagus','appendix','spleen'],
+  endo:['pituitary','adrenal_l','adrenal_r','thymus'],
+  urin:['kidney_l','kidney_r','ureter_l','ureter_r','bladder'],
+  nerv:['brain','brainstem','cerebellum','cranial_nerves','spinal_cord'],
+  inte:['skin'],
+  repr:['reproductive','ovary_l','ovary_r','uterus','fallopian_tubes','vagina','prostate','breast_l','breast_r']
+};
+const DH3_SYS_OF={};Object.entries(DH3_KEYS).forEach(([sys,ks])=>ks.forEach(k=>{DH3_SYS_OF[k]=sys}));
+const DH3_MODEL_URLS=f=>[new URL('models/'+f,document.baseURI).href,'https://cdn.jsdelivr.net/npm/open-anatomy-3d@0.1.0/models/'+f];
+let DH3={st:'idle',sex:'',cache:{},el:null};
+const dh3SexOf=p=>p&&p.sex==='F'?'female':'male';
+function dh3SystemOfMesh(m){
+  let n=m.name;
+  if(!(n in DH3_SYS_OF)&&m.parent&&m.parent.name&&(m.parent.name in DH3_SYS_OF))n=m.parent.name;
+  n=n.replace(/_\d+$/,'');
+  if(n in DH3_SYS_OF)return DH3_SYS_OF[n];
+  const grp=m.parent&&m.parent.name;
+  return grp==='muscles'||grp==='skeleton'?'musc':null
+}
+async function dh3Load(sex){
+  DH3.st='loading';DH3.sex=sex;
+  try{
+    const THREE=await import('three');
+    const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
+    const {OrbitControls}=await import('three/addons/controls/OrbitControls.js');
+    const {MeshoptDecoder}=await import('three/addons/libs/meshopt_decoder.module.js');
+    if(!DH3.renderer){
+      const el=document.createElement('div');el.style.cssText='width:100%;height:100%;touch-action:none';
+      const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+      renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));el.appendChild(renderer.domElement);
+      const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(35,0.7,0.05,50);
+      scene.add(new THREE.AmbientLight(0xffffff,0.9));const dl=new THREE.DirectionalLight(0xffffff,1.1);dl.position.set(1,2,3);scene.add(dl);
+      const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=false;controls.enablePan=false;controls.minDistance=0.6;controls.maxDistance=5;
+      const render=()=>renderer.render(scene,camera);controls.addEventListener('change',render);
+      let down=null;
+      renderer.domElement.addEventListener('pointerdown',e=>{down=[e.clientX,e.clientY]});
+      renderer.domElement.addEventListener('pointerup',e=>{if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])<5)dh3Pick(e);down=null});
+      new ResizeObserver(()=>dh3Resize()).observe(el);
+      Object.assign(DH3,{THREE,GLTFLoader,MeshoptDecoder,renderer,scene,camera,controls,render,el,ray:new THREE.Raycaster()});
+    }
+    if(!DH3.cache[sex]){
+      const loader=new DH3.GLTFLoader();loader.setMeshoptDecoder(DH3.MeshoptDecoder);
+      let gltf=null;
+      for(const u of DH3_MODEL_URLS('anatomy-'+sex+'.glb')){try{gltf=await loader.loadAsync(u);break}catch(e){}}
+      if(!gltf)throw new Error('model not found');
+      const root=gltf.scene;
+      root.traverse(m=>{if(m.isMesh){m.userData.sys=dh3SystemOfMesh(m);m.material=new DH3.THREE.MeshLambertMaterial({color:0xcfd6d6,transparent:true,opacity:.3,depthWrite:false})}});
+      DH3.scene.add(root);DH3.cache[sex]=root
+    }
+    DH3.st='ready';
+  }catch(e){DH3.st='fail';console.warn('3D body map failed',e)}
+  dhPaint()
+}
+function dh3Resize(){
+  if(DH3.st!=='ready'||!DH3.el)return;
+  const w=DH3.el.clientWidth,h=DH3.el.clientHeight;if(!w||!h)return;
+  DH3.renderer.setSize(w,h,false);DH3.camera.aspect=w/h;DH3.camera.updateProjectionMatrix();DH3.render()
+}
+function dh3Apply(sex,counts,sel){
+  const T=DH3.THREE;
+  Object.entries(DH3.cache).forEach(([k,root])=>{root.visible=k===sex});
+  const root=DH3.cache[sex];if(!root)return;
+  if(DH3.shown!==sex){
+    DH3.shown=sex;
+    const box=new T.Box3().setFromObject(root),size=box.getSize(new T.Vector3()),c=box.getCenter(new T.Vector3());
+    const dist=(size.y/2)/Math.tan(T.MathUtils.degToRad(17.5))*1.15;
+    DH3.controls.target.copy(c);DH3.camera.position.set(c.x,c.y,c.z+dist);DH3.controls.update()
+  }
+  root.traverse(m=>{
+    if(!m.isMesh)return;
+    const sys=m.userData.sys,isSel=sel!=='all'&&sys===sel,hasVisits=sys&&counts[sys]&&sel==='all',mat=m.material;
+    const musc=sys==='musc'&&m.parent&&m.parent.name==='muscles';
+    m.visible=musc?sel==='musc':true;
+    if(sys==='inte'){mat.color.set(isSel||hasVisits?0x0f766e:0xd9a98c);mat.opacity=isSel?.45:hasVisits?.25:.08;return}
+    if(isSel){mat.color.set(0x0f766e);mat.opacity=.95}
+    else if(hasVisits){mat.color.set(0x14b8a6);mat.opacity=.7}
+    else{mat.color.set(0xcfd6d6);mat.opacity=sel==='all'?.3:.14}
+  });
+  DH3.render()
+}
+function dh3Pick(e){
+  const r=DH3.renderer.domElement.getBoundingClientRect(),T=DH3.THREE,root=DH3.cache[DH3.shown];if(!root)return;
+  DH3.ray.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1),DH3.camera);
+  const meshes=[];root.traverse(m=>{if(m.isMesh&&m.visible&&m.userData.sys!=='inte')meshes.push(m)});
+  const hit=DH3.ray.intersectObjects(meshes,false)[0];
+  if(hit&&hit.object.userData.sys)dhSet('sys',hit.object.userData.sys)
+}
 function dhSet(k,v){DH[k]=v;dhPaint()}
 function dhPaint(){
   const box=$('dhc');if(!box)return;
@@ -1047,11 +1139,15 @@ function dhPaint(){
   const counts={};all.forEach(v=>{const k=dhSystemOf(v);counts[k]=(counts[k]||0)+1});
   const list=all.filter(v=>(DH.sys==='all'||dhSystemOf(v)===DH.sys)&&(DH.yr==='all'||v.d.slice(0,4)===DH.yr));
   const spots=Object.entries(DH_SPOTS).map(([k,[x,y]])=>`<g onclick="dhSet('sys','${k}')" style="cursor:pointer"><circle cx="${x}" cy="${y}" r="6" fill="${DH.sys===k?'var(--pr,#0f766e)':'#fff'}" stroke="var(--pr,#0f766e)" stroke-width="1.5"/><text x="${x}" y="${y+2.5}" font-size="7" text-anchor="middle" fill="${DH.sys===k?'#fff':'var(--pr,#0f766e)'}">${counts[k]||0}</text></g>`).join('');
-  const body=`<svg viewBox="0 0 100 150" style="width:150px;height:225px;flex:none"><g fill="currentColor" opacity=".13"><circle cx="50" cy="12" r="9"/><rect x="43" y="20" width="14" height="8"/><rect x="32" y="28" width="36" height="52" rx="12"/><rect x="18" y="30" width="12" height="54" rx="6"/><rect x="70" y="30" width="12" height="54" rx="6"/><rect x="34" y="78" width="14" height="66" rx="6"/><rect x="52" y="78" width="14" height="66" rx="6"/></g>${spots}</svg>`;
+  const bodySvg=`<svg viewBox="0 0 100 150" style="width:150px;height:225px;flex:none"><g fill="currentColor" opacity=".13"><circle cx="50" cy="12" r="9"/><rect x="43" y="20" width="14" height="8"/><rect x="32" y="28" width="36" height="52" rx="12"/><rect x="18" y="30" width="12" height="54" rx="6"/><rect x="70" y="30" width="12" height="54" rx="6"/><rect x="34" y="78" width="14" height="66" rx="6"/><rect x="52" y="78" width="14" height="66" rx="6"/></g>${spots}</svg>`;
+  const pt=P.find(x=>x.id===pid),sexName=dh3SexOf(pt),use3d=DH3.st==='ready'&&DH3.cache[sexName];
+  const body=use3d?'<div id="dh3d" style="width:260px;height:380px;flex:none"></div><div style="font-size:11px;color:var(--mu);max-width:260px">Drag to rotate, scroll to zoom, click an organ to filter.<br>Anatomy: BodyParts3D © The Database Center for Life Science (CC BY 4.0); female organs: Human Reference Atlas 3D Reference Organs, HuBMAP (CC BY 4.0); female body: MakeHuman (CC0). Modified by open-anatomy-3d (https://github.com/MervinR07/open-anatomy-3d), <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.</div>':bodySvg+(DH3.st==='loading'?'<div style="font-size:11px;color:var(--mu)">Loading 3D model...</div>':'');
   const sysList=[['all','All systems']].concat(DH_SYSTEMS.map(x=>[x[0],x[1]])).map(([k,n])=>`<button type="button" class="bt${DH.sys===k?'':' g'}" style="margin:2px" onclick="dhSet('sys','${k}')">${n}${k!=='all'&&counts[k]?' ('+counts[k]+')':''}</button>`).join('');
   const yrs=['all'].concat(years).map(y=>`<button type="button" class="bt${DH.yr===y?'':' g'}" style="margin:2px" onclick="dhSet('yr','${y}')">${y==='all'?'All years':y}</button>`).join('');
   const cards=list.map(v=>{const k=dhSystemOf(v),sn=DH_SYSTEMS.find(x=>x[0]===k)[1];return `<div class="cd" style="margin:0;padding:10px;border-left:4px solid var(--pr,#0f766e)"><div style="color:var(--mu);font-size:12px">${E(v.d)} | ${E(sn)}</div><div style="font-weight:600;margin-top:2px">${E(v.dx||v.cc||'Visit')}</div>${v.cc&&v.dx?`<div style="font-size:13px">${E(v.cc)}</div>`:''}${v.rx?`<div style="font-size:13px;color:var(--mu)">Rx: ${E(v.rx)}</div>`:''}${v.referral?`<div style="font-size:13px;color:var(--mu)">Referral: ${E(v.referral.to)}</div>`:''}<div style="font-size:12px;color:var(--mu);margin-top:4px">${E(v.byName||'')}</div></div>`}).join('');
-  box.innerHTML=`<h3 style="margin-top:0">Diagnosis History</h3>${all.length?`<div style="display:flex;gap:16px;flex-wrap:wrap"><div style="color:var(--tx,#111)">${body}</div><div style="flex:1;min-width:240px"><div>${yrs}</div><div style="margin-top:6px">${sysList}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:10px">${cards||'<p style="color:var(--mu)">No visits match this filter.</p>'}</div></div></div><p style="color:var(--mu);font-size:12px;margin:10px 0 0">Body systems are guessed from the diagnosis text for now. They will use ICD-10 codes once coded diagnosis is added.</p>`:'<p style="color:var(--mu)">No visits recorded yet.</p>'}`
+  box.innerHTML=`<h3 style="margin-top:0">Diagnosis History</h3>${all.length?`<div style="display:flex;gap:16px;flex-wrap:wrap"><div style="color:var(--tx,#111)">${body}</div><div style="flex:1;min-width:240px"><div>${yrs}</div><div style="margin-top:6px">${sysList}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:10px">${cards||'<p style="color:var(--mu)">No visits match this filter.</p>'}</div></div></div><p style="color:var(--mu);font-size:12px;margin:10px 0 0">Body systems are guessed from the diagnosis text for now. They will use ICD-10 codes once coded diagnosis is added.</p>`:'<p style="color:var(--mu)">No visits recorded yet.</p>'}`;
+  if(all.length&&!use3d&&DH3.st!=='loading'&&DH3.st!=='fail')dh3Load(sexName);
+  if(use3d){const slot=$('dh3d');if(slot){slot.appendChild(DH3.el);dh3Resize();dh3Apply(sexName,counts,DH.sys)}}
 }
 const YAK_STATUS=[['none','Not enrolled'],['pending','Pending (YES slip not signed)'],['enrolled','Enrolled']];
 const yakLabel=st=>(YAK_STATUS.find(x=>x[0]===st)||YAK_STATUS[0])[1];
