@@ -952,7 +952,7 @@ async function backupAll(){
 async function ioExport(){
   if(!isAdm())return;
   if(!await sConfirm('The file will contain personal information of '+P.length+' patients. Keep it safe. Do not send it through chat or social media.','Download patient list','Download',0))return;
-  const rows=[['patient_id','last_name','first_name','middle_name','sex','birthdate','barangay','purok','contact','household','registered','philhealth','yakap_status','yakap_date']].concat(P.slice().sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true})).map(p=>[p.id,p.ln,p.fn,p.mn||'',p.sex,p.dob,p.br,p.pu||'',p.tel||'',p.hh,p.createdDay||'',p.ph||'',(p.yak||{}).st||'none',(p.yak||{}).date||'']));
+  const rows=[['patient_id','last_name','first_name','middle_name','sex','birthdate','barangay','purok','contact','household','registered','philhealth','yakap_status','yakap_date','fpe_date']].concat(P.slice().sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true})).map(p=>[p.id,p.ln,p.fn,p.mn||'',p.sex,p.dob,p.br,p.pu||'',p.tel||'',p.hh,p.createdDay||'',p.ph||'',(p.yak||{}).st||'none',(p.yak||{}).date||'',(p.fpe||{}).date||'']));
   ioDl('patients-'+today()+'.csv',rows);await lg('Exported patient list ('+P.length+' patients)')
 }
 const iop=()=>{
@@ -1039,18 +1039,43 @@ const YAK_STATUS=[['none','Not enrolled'],['pending','Pending (YES slip not sign
 const yakLabel=st=>(YAK_STATUS.find(x=>x[0]===st)||YAK_STATUS[0])[1];
 const yakCard=(p,upd)=>{
   const y=p.yak||{st:'none'},ok=y.st==='enrolled';
-  return `<div class="cd" id="yakc" style="border-left:4px solid ${ok?'var(--ok,#16a34a)':'var(--mu)'}"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">YAKAP empanelment</h3>${upd?`<button type="button" class="bt g" onclick="yakOpen('${p.id}')">Update</button>`:''}</div><div style="margin-top:8px"><b>Status:</b> ${E(yakLabel(y.st))}</div><div style="margin-top:4px"><b>PhilHealth number:</b> ${p.ph?E(p.ph):'<span style="color:var(--mu)">Not recorded. Required to enroll.</span>'}</div>${y.date?`<div style="margin-top:4px"><b>Enrolled on:</b> ${E(y.date)}</div>`:''}<div style="margin-top:4px"><b>YES slip signed:</b> ${y.yes?'Yes':'No'}</div></div>`
+  return `<div class="cd" id="yakc" style="border-left:4px solid ${ok?'var(--ok,#16a34a)':'var(--mu)'}"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">YAKAP empanelment</h3><div style="display:flex;gap:8px">${CROLES.includes(U.role)?`<button type="button" class="bt g" onclick="fpeOpen('${p.id}')">${p.fpe?'View / edit FPE':'Start FPE'}</button>`:''}${upd?`<button type="button" class="bt g" onclick="yakOpen('${p.id}')">Update</button>`:''}</div></div><div style="margin-top:8px"><b>Status:</b> ${E(yakLabel(y.st))}</div><div style="margin-top:4px"><b>PhilHealth number:</b> ${p.ph?E(p.ph):'<span style="color:var(--mu)">Not recorded. Required to enroll.</span>'}</div>${y.date?`<div style="margin-top:4px"><b>Enrolled on:</b> ${E(y.date)}</div>`:''}<div style="margin-top:4px"><b>YES slip signed:</b> ${y.yes?'Yes':'No'}</div><div style="margin-top:4px"><b>First Patient Encounter (FPE):</b> ${p.fpe?'Done on '+E(p.fpe.date):'<span style="color:var(--mu)">Not done yet</span>'}</div></div>`
 };
 function yakOpen(id){
   const p=P.find(x=>x.id===id);if(!p)return;
   const y=p.yak||{st:'none'};
   fmShow('YAKAP empanelment',pn(p),`<label>Status</label><select id="yk1">${YAK_STATUS.map(x=>`<option value="${x[0]}" ${x[0]===y.st?'selected':''}>${x[1]}</option>`).join('')}</select><label style="margin-top:10px">Enrollment date</label><input id="yk2" type="date" max="${today()}" value="${E(y.date||'')}"><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="yk3" type="checkbox" style="width:auto" ${y.yes?'checked':''}><span>Patient signed the YAKAP Empanelment Slip (YES)</span></label><div class="er2" id="yke"></div>`,'Save',`yakSave('${id}')`)
 }
+const FPE_EDU=['Healthy diet','Physical activity','Smoking cessation','Alcohol use','Medication adherence','Danger signs and when to return'];
+function fpeOpen(id){
+  const p=P.find(x=>x.id===id);if(!p)return;
+  const f=p.fpe||{hx:{},scr:{},edu:[]},h=f.hx||{},c=f.scr||{};
+  const yn=(i,v)=>`<select id="${i}"><option value="">Select</option>${['No','Yes'].map(o=>`<option ${v===o?'selected':''}>${o}</option>`).join('')}</select>`;
+  fmShow('First Patient Encounter (FPE)',pn(p)+' | '+age(p.dob),`<h3 style="margin:0 0 6px">1. History</h3><label>Past medical and surgical history</label><textarea id="fp1" rows="2" maxlength="1000">${E(h.past!==undefined?h.past:(p.mh||''))}</textarea><label style="margin-top:8px">Family history</label><textarea id="fp2" rows="2" maxlength="1000" placeholder="e.g. Hypertension, diabetes, cancer">${E(h.fam||'')}</textarea><div class="fm" style="margin-top:8px"><div><label>Smoker</label>${yn('fp3',h.smoker)}</div><div><label>Alcohol use</label>${yn('fp4',h.alcohol)}</div></div><h3 style="margin:14px 0 6px">2. Screening</h3><div class="fm"><div><label>BP (mmHg)</label><input id="fp5" placeholder="120/80" maxlength="7" value="${E(c.bp||'')}"></div><div><label>Heart rate (bpm)</label><input id="fp6" type="number" min="20" max="250" value="${E(c.hr||'')}"></div><div><label>Temperature (C)</label><input id="fp7" type="number" step="0.1" min="30" max="45" value="${E(c.temp||'')}"></div><div><label>Weight (kg)</label><input id="fp8" type="number" step="0.1" min="1" max="400" value="${E(c.wt||'')}"></div><div><label>Height (cm)</label><input id="fp9" type="number" step="0.1" min="30" max="250" value="${E(c.ht||'')}"></div></div><label style="margin-top:8px">Screening notes</label><textarea id="fp10" rows="2" maxlength="1000">${E(c.notes||'')}</textarea><h3 style="margin:14px 0 6px">3. Health education given</h3>${FPE_EDU.map((x,i)=>`<label style="display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" class="fpe" style="width:auto" value="${E(x)}" ${(f.edu||[]).includes(x)?'checked':''}><span>${x}</span></label>`).join('')}<div class="er2" id="fpee"></div>`,'Save FPE',`fpeSave('${id}')`)
+}
+async function fpeSave(id){
+  const p=P.find(x=>x.id===id),er=$('fpee'),g=i=>$(i).value.trim();if(!p)return;
+  const wt=parseFloat(g('fp8')),ht=parseFloat(g('fp9'));
+  if(g('fp5')&&!/^\d{2,3}\/\d{2,3}$/.test(g('fp5')))return er.textContent='BP must look like 120/80.';
+  if(!g('fp3')||!g('fp4'))return er.textContent='Answer the smoker and alcohol questions.';
+  const edu=[...document.querySelectorAll('.fpe:checked')].map(x=>x.value);
+  if(!edu.length)return er.textContent='Select at least one health education topic.';
+  const bmi=wt&&ht?Math.round(wt/Math.pow(ht/100,2)*10)/10:'';
+  const fpe={date:(p.fpe&&p.fpe.date)||today(),by:(p.fpe&&p.fpe.by)||U.name,hx:{past:g('fp1'),fam:g('fp2'),smoker:g('fp3'),alcohol:g('fp4')},scr:{bp:g('fp5'),hr:g('fp6'),temp:g('fp7'),wt:g('fp8'),ht:g('fp9'),bmi,notes:g('fp10')},edu};
+  fmBusy(true);
+  try{
+    await updateDoc(doc(db,'patients',id),{fpe,fpeAt:serverTimestamp()});
+    p.fpe=fpe;await lg('FPE saved '+id);fmClose();
+    const c=$('yakc');if(c)c.outerHTML=yakCard(p,canEdit());
+    sDone('First Patient Encounter was saved.','Saved')
+  }catch(x){fmBusy(false);er.textContent=x.code==='permission-denied'?'You do not have permission to edit patients.':'Could not save. Check your connection.'}
+}
 async function yakSave(id){
   const p=P.find(x=>x.id===id),er=$('yke');if(!p)return;
   const y={st:$('yk1').value,date:$('yk2').value,yes:$('yk3').checked};
   if(y.st==='enrolled'){
     if(!p.ph)return er.textContent='Add the patient PhilHealth number first (Edit patient).';
+    if(!p.fpe)return er.textContent='Complete the First Patient Encounter (FPE) first.';
     if(!y.yes)return er.textContent='The YES slip must be signed before the patient is enrolled.';
     if(!y.date)return er.textContent='Enter the enrollment date.';
   }
@@ -2987,6 +3012,6 @@ document.addEventListener('change',e=>{
 });
 addEventListener('keydown',e=>{if(e.key==='Escape'&&DPS){dpClose();e.stopImmediatePropagation()}},true);
 addEventListener('resize',dpPlace);addEventListener('scroll',dpPlace,true);
-Object.assign(window,{yakOpen,yakSave,ntMute,ntToggle,ntGo,setTab,setReasons,RSDEF,invTab,invSetK,invSq,invSetT,invSetR,invQuick,invPrintStock,invCsvStock,invPrintRo,invCsvRo,invPrintHist,invCsvHist,invPrintSum,invCsvSum,callQ,oxOpen,oxPick,oxSave,setLabAttach,setLabRole,lbPick,lbRm,lbView,lbVX,stCall,stDone,stBack,snSync,phIn,rfSetF,rfSq,rfSet,rfRet,mcSetR,mcApply,mcSq,mcDoc,mcCsv,rxDspOpen,rxDspChg,rxDspGo,rxWarn,qNew,rxOpen,rxSave,vxIn,vxInSave,vxAdj,vaChg,vxAdjSave,fuQuick,fuDone,fuAll,fuSetF,fuSetT,fuSetB,fuSq,fuPrint,pnSetF,pnSetB,pnSq,pnPrint,pnPick,pnFind,pnForm,pnEdd,pnSave,pnVisit,pnNv,pnVisitSave,pnClose,pnCloseSave,pnBanner,rmRx,rpGo,rpPreset,rpPrint,rpCsv,ioFile,ioShow,ioRun,ioTemplate,ioExport,goBack,dmOpen,dmMed,dmClose,dmGo,stSearch,stFlt,siOpen,siClose,siSum,siSave,saOpen,saChg,saSave,slF,slCsv,ahOpen,ahSave,dxPer,dxPick,pSort,addDev,removeDev,plSum,dvTab,annDuChange,$,rows,go,out,doLogin,doSetup,view,save,addStaff,setActive,loadDemo,setPower,setIdle,viewAs,imSet,imGive,setLabTests,lbSave,setVitalsRole,setReasonRole,rOpen,rSave,qClose,backupAll,stNew,dispense,stSave,stAdd,fmClose,stFill,seClose,seSave,vOpen,vSave,removeUser,editP,saveEdit,delP,sq,openHH,addMember,qAdd,qAskV,qVGo,qVX,qAddP,qSearch,qCancel,startQ,startC,releaseQ,brChg,savePlaces,plRow,apApprove,apReject,saveRxApprove,setRxRole,editLic,lhPick,lhNoLogo,lhSave,printRx,certOpen,certGo,setAnnRole,setSound,postAnn,clearAnn,recallQ,setMyRoom,setRooms,cSearch,rmRx,saveC,cancelC});
+Object.assign(window,{yakOpen,yakSave,fpeOpen,fpeSave,ntMute,ntToggle,ntGo,setTab,setReasons,RSDEF,invTab,invSetK,invSq,invSetT,invSetR,invQuick,invPrintStock,invCsvStock,invPrintRo,invCsvRo,invPrintHist,invCsvHist,invPrintSum,invCsvSum,callQ,oxOpen,oxPick,oxSave,setLabAttach,setLabRole,lbPick,lbRm,lbView,lbVX,stCall,stDone,stBack,snSync,phIn,rfSetF,rfSq,rfSet,rfRet,mcSetR,mcApply,mcSq,mcDoc,mcCsv,rxDspOpen,rxDspChg,rxDspGo,rxWarn,qNew,rxOpen,rxSave,vxIn,vxInSave,vxAdj,vaChg,vxAdjSave,fuQuick,fuDone,fuAll,fuSetF,fuSetT,fuSetB,fuSq,fuPrint,pnSetF,pnSetB,pnSq,pnPrint,pnPick,pnFind,pnForm,pnEdd,pnSave,pnVisit,pnNv,pnVisitSave,pnClose,pnCloseSave,pnBanner,rmRx,rpGo,rpPreset,rpPrint,rpCsv,ioFile,ioShow,ioRun,ioTemplate,ioExport,goBack,dmOpen,dmMed,dmClose,dmGo,stSearch,stFlt,siOpen,siClose,siSum,siSave,saOpen,saChg,saSave,slF,slCsv,ahOpen,ahSave,dxPer,dxPick,pSort,addDev,removeDev,plSum,dvTab,annDuChange,$,rows,go,out,doLogin,doSetup,view,save,addStaff,setActive,loadDemo,setPower,setIdle,viewAs,imSet,imGive,setLabTests,lbSave,setVitalsRole,setReasonRole,rOpen,rSave,qClose,backupAll,stNew,dispense,stSave,stAdd,fmClose,stFill,seClose,seSave,vOpen,vSave,removeUser,editP,saveEdit,delP,sq,openHH,addMember,qAdd,qAskV,qVGo,qVX,qAddP,qSearch,qCancel,startQ,startC,releaseQ,brChg,savePlaces,plRow,apApprove,apReject,saveRxApprove,setRxRole,editLic,lhPick,lhNoLogo,lhSave,printRx,certOpen,certGo,setAnnRole,setSound,postAnn,clearAnn,recallQ,setMyRoom,setRooms,cSearch,rmRx,saveC,cancelC});
 ['stAdd','siOpen','pnVisit','pnForm','vxIn'].forEach(fmWrap);
 </script></body></html>
