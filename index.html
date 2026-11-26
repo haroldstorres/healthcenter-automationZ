@@ -952,7 +952,7 @@ async function backupAll(){
 async function ioExport(){
   if(!isAdm())return;
   if(!await sConfirm('The file will contain personal information of '+P.length+' patients. Keep it safe. Do not send it through chat or social media.','Download patient list','Download',0))return;
-  const rows=[['patient_id','last_name','first_name','middle_name','sex','birthdate','barangay','purok','contact','household','registered','philhealth']].concat(P.slice().sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true})).map(p=>[p.id,p.ln,p.fn,p.mn||'',p.sex,p.dob,p.br,p.pu||'',p.tel||'',p.hh,p.createdDay||'',p.ph||'']));
+  const rows=[['patient_id','last_name','first_name','middle_name','sex','birthdate','barangay','purok','contact','household','registered','philhealth','yakap_status','yakap_date']].concat(P.slice().sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true})).map(p=>[p.id,p.ln,p.fn,p.mn||'',p.sex,p.dob,p.br,p.pu||'',p.tel||'',p.hh,p.createdDay||'',p.ph||'',(p.yak||{}).st||'none',(p.yak||{}).date||'']));
   ioDl('patients-'+today()+'.csv',rows);await lg('Exported patient list ('+P.length+' patients)')
 }
 const iop=()=>{
@@ -1035,6 +1035,34 @@ function algHit(drug,alg){
 const algMsg=(h,drug)=>h.map(x=>x.rel?'The patient is allergic to "'+x.t+'". '+drug+' is in the same drug group.':'The patient is allergic to "'+x.t+'".').join(' ');
 const rxAlg=drug=>{const p=P.find(x=>x.id===cp);return p?algHit(drug,p.alg):[]};
 function rxAlg2(r){const p=P.find(x=>x.id===r.pid);return p?{p,m:(r.items||[]).map(i=>algHit(i.drug,p.alg))}:{p:null,m:(r.items||[]).map(()=>[])}}
+const YAK_STATUS=[['none','Not enrolled'],['pending','Pending (YES slip not signed)'],['enrolled','Enrolled']];
+const yakLabel=st=>(YAK_STATUS.find(x=>x[0]===st)||YAK_STATUS[0])[1];
+const yakCard=(p,upd)=>{
+  const y=p.yak||{st:'none'},ok=y.st==='enrolled';
+  return `<div class="cd" id="yakc" style="border-left:4px solid ${ok?'var(--ok,#16a34a)':'var(--mu)'}"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">YAKAP empanelment</h3>${upd?`<button type="button" class="bt g" onclick="yakOpen('${p.id}')">Update</button>`:''}</div><div style="margin-top:8px"><b>Status:</b> ${E(yakLabel(y.st))}</div><div style="margin-top:4px"><b>PhilHealth number:</b> ${p.ph?E(p.ph):'<span style="color:var(--mu)">Not recorded. Required to enroll.</span>'}</div>${y.date?`<div style="margin-top:4px"><b>Enrolled on:</b> ${E(y.date)}</div>`:''}<div style="margin-top:4px"><b>YES slip signed:</b> ${y.yes?'Yes':'No'}</div></div>`
+};
+function yakOpen(id){
+  const p=P.find(x=>x.id===id);if(!p)return;
+  const y=p.yak||{st:'none'};
+  fmShow('YAKAP empanelment',pn(p),`<label>Status</label><select id="yk1">${YAK_STATUS.map(x=>`<option value="${x[0]}" ${x[0]===y.st?'selected':''}>${x[1]}</option>`).join('')}</select><label style="margin-top:10px">Enrollment date</label><input id="yk2" type="date" max="${today()}" value="${E(y.date||'')}"><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="yk3" type="checkbox" style="width:auto" ${y.yes?'checked':''}><span>Patient signed the YAKAP Empanelment Slip (YES)</span></label><div class="er2" id="yke"></div>`,'Save',`yakSave('${id}')`)
+}
+async function yakSave(id){
+  const p=P.find(x=>x.id===id),er=$('yke');if(!p)return;
+  const y={st:$('yk1').value,date:$('yk2').value,yes:$('yk3').checked};
+  if(y.st==='enrolled'){
+    if(!p.ph)return er.textContent='Add the patient PhilHealth number first (Edit patient).';
+    if(!y.yes)return er.textContent='The YES slip must be signed before the patient is enrolled.';
+    if(!y.date)return er.textContent='Enter the enrollment date.';
+  }
+  if(y.st==='none'){y.date='';y.yes=false}
+  fmBusy(true);
+  try{
+    await updateDoc(doc(db,'patients',id),{yak:y,yakBy:U.name,yakAt:serverTimestamp()});
+    p.yak=y;await lg('YAKAP empanelment '+id+': '+y.st);fmClose();
+    const c=$('yakc');if(c)c.outerHTML=yakCard(p,true);
+    sDone('YAKAP empanelment was saved.','Saved')
+  }catch(x){fmBusy(false);er.textContent=x.code==='permission-denied'?'You do not have permission to edit patients.':'Could not save. Check your connection.'}
+}
 const ahCard=(p,upd)=>{
   const a=(p.alg||'').trim(),m=(p.mh||'').trim(),real=algTok(a).length>0;
   return `<div class="cd" id="ahc" style="${real?'border-left:4px solid var(--er)':''}"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Allergies and medical history</h3>${upd?`<button type="button" class="bt g" onclick="ahOpen('${p.id}')">Update</button>`:''}</div><div style="margin-top:8px;white-space:pre-wrap"><b${real?' style="color:var(--er)"':''}>Allergies:</b> ${a?E(a):'<span style="color:var(--mu)">Not recorded yet. Ask the patient. Type "None known" if there are none.</span>'}</div><div style="margin-top:4px;white-space:pre-wrap"><b>Medical history:</b> ${m?E(m):'<span style="color:var(--mu)">Not recorded yet.</span>'}</div></div>`
@@ -1057,7 +1085,7 @@ async function ahSave(id){
 }
 function prof(){
   const p=P.find(x=>x.id===pid),lv=LV[U.role]||'basic',m=P.filter(x=>x.hh===p.hh&&x.id!==p.id);
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="bt g" onclick="goBack('patients')">Back to ${E(backLbl('patients'))}</button>${canReg()?`<button class="bt g" onclick="qAddP()">Add to queue</button>`:''}${CROLES.includes(U.role)?`<button class="bt" onclick="startC('${p.id}')">New consultation</button>`:''}${canEdit()?`<button class="bt g" onclick="editP()">Edit</button>`:''}${can('adminDelete')?`<button class="bt g" onclick="delP()">Delete</button>`:''}</div><div class="cd" style="margin-top:12px"><h2 style="margin:0">${E(pn(p))}</h2><div style="color:var(--mu)">${p.id} | ${age(p.dob)} | ${p.sex==='M'?'Male':'Female'}</div>${lv==='rx'?'':`<div class="fm" style="margin-top:12px"><div><label>Birthdate</label>${p.dob}</div><div><label>Address</label>${E(p.pu+', '+p.br)}</div><div><label>Contact</label>${E(p.tel||'None')}</div><div><label>PhilHealth</label>${E(p.ph||'None')}</div><div><label>Household</label><a href="#" onclick="openHH('${p.hh}');return false">${p.hh}</a></div></div>`}</div>${lv==='basic'?'':ahCard(p,CROLES.includes(U.role))}${lv==='full'&&pnElig(p)?'<div class="cd" id="pnc">Loading...</div>':''}${lv==='rx'?'':`<div class="cd"><h3 style="margin-top:0">Household members</h3>${m.length?m.map(x=>`<a href="#" onclick="view('${x.id}');return false" style="margin-right:14px">${E(pn(x))} (${age(x.dob)})</a>`).join(''):'No other members.'}</div>`}<div class="cd"><h3 style="margin-top:0">${lv==='rx'?'Prescriptions':'Visit history'}</h3><div id="hist" class="ov">${lv==='basic'?'<p style="color:var(--mu)">Clinical history is restricted for your role.</p>':'Loading...'}</div></div>${lv==='full'?`<div class="cd"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0">Lab results</h3>${oxCan()?`<button class="bt g" onclick="oxOpen('${id}')">Add outside result</button>`:''}</div><div id="lox"></div><div id="labh" class="ov">Loading...</div></div>`:U.role==='frontdesk'?`<div class="cd"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0">Outside lab result</h3><p style="color:var(--mu);margin:4px 0 0;font-size:14px">The patient brought a result from another lab or hospital. The doctor will see it on the profile.</p></div><button class="bt g" onclick="oxOpen('${id}')">Add outside result</button></div><div id="lox" style="margin-top:12px"></div></div>`:''}`}
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="bt g" onclick="goBack('patients')">Back to ${E(backLbl('patients'))}</button>${canReg()?`<button class="bt g" onclick="qAddP()">Add to queue</button>`:''}${CROLES.includes(U.role)?`<button class="bt" onclick="startC('${p.id}')">New consultation</button>`:''}${canEdit()?`<button class="bt g" onclick="editP()">Edit</button>`:''}${can('adminDelete')?`<button class="bt g" onclick="delP()">Delete</button>`:''}</div><div class="cd" style="margin-top:12px"><h2 style="margin:0">${E(pn(p))}</h2><div style="color:var(--mu)">${p.id} | ${age(p.dob)} | ${p.sex==='M'?'Male':'Female'}</div>${lv==='rx'?'':`<div class="fm" style="margin-top:12px"><div><label>Birthdate</label>${p.dob}</div><div><label>Address</label>${E(p.pu+', '+p.br)}</div><div><label>Contact</label>${E(p.tel||'None')}</div><div><label>PhilHealth</label>${E(p.ph||'None')}</div><div><label>Household</label><a href="#" onclick="openHH('${p.hh}');return false">${p.hh}</a></div></div>`}</div>${lv==='basic'?'':ahCard(p,CROLES.includes(U.role))}${lv==='rx'?'':yakCard(p,canEdit())}${lv==='full'&&pnElig(p)?'<div class="cd" id="pnc">Loading...</div>':''}${lv==='rx'?'':`<div class="cd"><h3 style="margin-top:0">Household members</h3>${m.length?m.map(x=>`<a href="#" onclick="view('${x.id}');return false" style="margin-right:14px">${E(pn(x))} (${age(x.dob)})</a>`).join(''):'No other members.'}</div>`}<div class="cd"><h3 style="margin-top:0">${lv==='rx'?'Prescriptions':'Visit history'}</h3><div id="hist" class="ov">${lv==='basic'?'<p style="color:var(--mu)">Clinical history is restricted for your role.</p>':'Loading...'}</div></div>${lv==='full'?`<div class="cd"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0">Lab results</h3>${oxCan()?`<button class="bt g" onclick="oxOpen('${id}')">Add outside result</button>`:''}</div><div id="lox"></div><div id="labh" class="ov">Loading...</div></div>`:U.role==='frontdesk'?`<div class="cd"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0">Outside lab result</h3><p style="color:var(--mu);margin:4px 0 0;font-size:14px">The patient brought a result from another lab or hospital. The doctor will see it on the profile.</p></div><button class="bt g" onclick="oxOpen('${id}')">Add outside result</button></div><div id="lox" style="margin-top:12px"></div></div>`:''}`}
 async function view(id,np,quiet){
   if(!np&&(pg!=='prof'||pid!==id))navPush();
   pid=id;pg='prof';if(!quiet){lg('Viewed '+id);R();scrollTo(0,0)}
