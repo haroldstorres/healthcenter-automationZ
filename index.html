@@ -1080,9 +1080,9 @@ async function dh3Load(sex){
     if(!DH3.renderer){
       const el=document.createElement('div');el.style.cssText='width:100%;height:100%;touch-action:none';
       const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-      renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));el.appendChild(renderer.domElement);
-      const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(35,0.7,0.05,50);
-      scene.add(new THREE.AmbientLight(0xffffff,0.9));const dl=new THREE.DirectionalLight(0xffffff,1.1);dl.position.set(1,2,3);scene.add(dl);
+      renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));el.appendChild(renderer.domElement);
+      const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(30,0.7,0.05,50);
+      scene.add(new THREE.HemisphereLight(0xffffff,0xb9a58f,1.1));[[2,4,3,1.8],[-3,2,-2,.7],[0,1,-4,.5]].forEach(([x,y,z,i])=>{const l=new THREE.DirectionalLight(0xffffff,i);l.position.set(x,y,z);scene.add(l)});
       const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=false;controls.enablePan=false;controls.minDistance=0.6;controls.maxDistance=5;
       const render=()=>renderer.render(scene,camera);controls.addEventListener('change',render);
       let down=null;
@@ -1097,12 +1097,30 @@ async function dh3Load(sex){
       for(const u of DH3_MODEL_URLS('anatomy-'+sex+'.glb')){try{gltf=await loader.loadAsync(u);break}catch(e){}}
       if(!gltf)throw new Error('model not found');
       const root=gltf.scene;
-      root.traverse(m=>{if(m.isMesh){m.userData.sys=dh3SystemOfMesh(m);m.userData.base=parseInt(DH3_COLORS[dh3KeyOf(m)]||'cfd6d6',16);m.material=new DH3.THREE.MeshLambertMaterial({color:m.userData.base,transparent:true,opacity:.5})}});
+      const skinMat=dh3SkinMaterial(),rough={skeleton:.7,muscles:.6,organs:.45,vessels:.35,nerves:.5};
+      root.userData.skinMat=skinMat;
+      root.traverse(m=>{
+        if(!m.isMesh)return;
+        let top=m;while(top.parent&&top.parent!==root)top=top.parent;
+        m.userData.grp=top.name;m.userData.sys=dh3SystemOfMesh(m);
+        if(top.name==='skin'){m.userData.sys='inte';m.material=skinMat;m.renderOrder=10;m.raycast=()=>{};return}
+        m.userData.base=parseInt(DH3_COLORS[dh3KeyOf(m)]||'cfd6d6',16);
+        m.material=new DH3.THREE.MeshStandardMaterial({color:m.userData.base,roughness:rough[top.name]||.5,metalness:0})
+      });
       DH3.scene.add(root);DH3.cache[sex]=root
     }
     DH3.st='ready';
   }catch(e){DH3.st='fail';console.warn('3D body map failed',e)}
   dhPaint()
+}
+function dh3SkinMaterial(){
+  const T=DH3.THREE;
+  return new T.ShaderMaterial({
+    transparent:true,depthWrite:false,side:T.FrontSide,
+    uniforms:{uColor:{value:new T.Color('#e9b596')},uRim:{value:new T.Color('#d98c6a')},uBoost:{value:0}},
+    vertexShader:'varying vec3 vNormal;varying vec3 vView;void main(){vec4 mv=modelViewMatrix*vec4(position,1.0);vNormal=normalize(normalMatrix*normal);vView=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}',
+    fragmentShader:'uniform vec3 uColor;uniform vec3 uRim;uniform float uBoost;varying vec3 vNormal;varying vec3 vView;void main(){float f=1.0-abs(dot(normalize(vNormal),normalize(vView)));float rim=pow(f,2.2);vec3 col=mix(uColor,uRim,rim);float light=0.75+0.25*max(dot(normalize(vNormal),normalize(vec3(0.3,0.6,0.8))),0.0);gl_FragColor=vec4(col*light,0.07+0.5*rim+uBoost);}'
+  })
 }
 function dh3Resize(){
   if(DH3.st!=='ready'||!DH3.el)return;
@@ -1116,23 +1134,20 @@ function dh3Apply(sex,counts,sel){
   if(DH3.shown!==sex){
     DH3.shown=sex;
     const box=new T.Box3().setFromObject(root),size=box.getSize(new T.Vector3()),c=box.getCenter(new T.Vector3());
-    const dist=(size.y/2)/Math.tan(T.MathUtils.degToRad(17.5))*0.95;
+    const dist=(size.y/2)/Math.tan(T.MathUtils.degToRad(15))*1.08;
     DH3.controls.target.copy(c);DH3.camera.position.set(c.x,c.y,c.z+dist);DH3.controls.update()
   }
-  const anyVisits=Object.keys(counts).length>0;
+  const anyVisits=Object.keys(counts).length>0,baseOpacity={skeleton:.55,muscles:.85};
+  root.userData.skinMat.uniforms.uBoost.value=sel==='inte'?.35:(sel==='all'&&counts.inte?.2:0);
   root.traverse(m=>{
-    if(!m.isMesh)return;
-    const sys=m.userData.sys,isSel=sel!=='all'&&sys===sel,hasVisits=sys&&counts[sys],mat=m.material;
-    const musc=sys==='musc'&&m.parent&&m.parent.name==='muscles';
-    m.visible=musc?sel==='musc':true;
-    mat.color.setHex(m.userData.base);
-    let op;
-    if(sys==='inte')op=isSel?.6:.08;
-    else if(sel!=='all')op=isSel?1:.1;
-    else op=!anyVisits||hasVisits?.95:.3;
-    if(sys==='musc'&&!musc&&sel==='all')op=Math.min(op,.35);
-    mat.emissive.setHex(isSel||(sel==='all'&&hasVisits)?0x331a1a:0);
-    const wasTransparent=mat.transparent;mat.opacity=op;mat.transparent=op<.95;mat.depthWrite=!mat.transparent;
+    if(!m.isMesh||m.userData.sys==='inte'&&m.userData.grp==='skin')return;
+    const sys=m.userData.sys,grp=m.userData.grp,isSel=sel!=='all'&&sys===sel,hasVisits=sys&&counts[sys],mat=m.material;
+    m.visible=grp==='muscles'?sel==='musc':true;
+    let op=baseOpacity[grp]??1;
+    if(sel!=='all')op=isSel?(grp==='skeleton'?.8:1):.12;
+    else if(anyVisits&&!hasVisits)op=Math.min(op,.35);
+    mat.emissive.setHex(0xe5391b);mat.emissiveIntensity=isSel||(sel==='all'&&hasVisits)?.3:0;
+    const wasTransparent=mat.transparent;mat.opacity=op;mat.transparent=op<1;mat.depthWrite=!mat.transparent;
     if(wasTransparent!==mat.transparent)mat.needsUpdate=true
   });
   DH3.render()
@@ -1153,7 +1168,7 @@ function dhPaint(){
   const spots=Object.entries(DH_SPOTS).map(([k,[x,y]])=>`<g onclick="dhSet('sys','${k}')" style="cursor:pointer"><circle cx="${x}" cy="${y}" r="6" fill="${DH.sys===k?'var(--pr,#0f766e)':'#fff'}" stroke="var(--pr,#0f766e)" stroke-width="1.5"/><text x="${x}" y="${y+2.5}" font-size="7" text-anchor="middle" fill="${DH.sys===k?'#fff':'var(--pr,#0f766e)'}">${counts[k]||0}</text></g>`).join('');
   const bodySvg=`<svg viewBox="0 0 100 150" style="width:150px;height:225px;flex:none"><g fill="currentColor" opacity=".13"><circle cx="50" cy="12" r="9"/><rect x="43" y="20" width="14" height="8"/><rect x="32" y="28" width="36" height="52" rx="12"/><rect x="18" y="30" width="12" height="54" rx="6"/><rect x="70" y="30" width="12" height="54" rx="6"/><rect x="34" y="78" width="14" height="66" rx="6"/><rect x="52" y="78" width="14" height="66" rx="6"/></g>${spots}</svg>`;
   const pt=P.find(x=>x.id===pid),sexName=dh3SexOf(pt),use3d=DH3.st==='ready'&&DH3.cache[sexName];
-  const body=use3d?'<div id="dh3d" style="width:260px;height:380px;flex:none"></div><div style="font-size:11px;color:var(--mu);max-width:260px">Drag to rotate, scroll to zoom, click an organ to filter.<br>Anatomy: BodyParts3D © The Database Center for Life Science (CC BY 4.0); female organs: Human Reference Atlas 3D Reference Organs, HuBMAP (CC BY 4.0); female body: MakeHuman (CC0). Modified by open-anatomy-3d (https://github.com/MervinR07/open-anatomy-3d), <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.</div>':bodySvg+(DH3.st==='loading'?'<div style="font-size:11px;color:var(--mu)">Loading 3D model...</div>':'');
+  const body=use3d?'<div id="dh3d" style="width:280px;height:420px;flex:none;background:#17171a;border-radius:12px;overflow:hidden"></div><div style="font-size:11px;color:var(--mu);max-width:260px">Drag to rotate, scroll to zoom, click an organ to filter.<br>Anatomy: BodyParts3D © The Database Center for Life Science (CC BY 4.0); female organs: Human Reference Atlas 3D Reference Organs, HuBMAP (CC BY 4.0); female body: MakeHuman (CC0). Modified by open-anatomy-3d (https://github.com/MervinR07/open-anatomy-3d), <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.</div>':bodySvg+(DH3.st==='loading'?'<div style="font-size:11px;color:var(--mu)">Loading 3D model...</div>':'');
   const sysList=[['all','All systems']].concat(DH_SYSTEMS.map(x=>[x[0],x[1]])).map(([k,n])=>`<button type="button" class="bt${DH.sys===k?'':' g'}" style="margin:2px" onclick="dhSet('sys','${k}')">${n}${k!=='all'&&counts[k]?' ('+counts[k]+')':''}</button>`).join('');
   const yrs=['all'].concat(years).map(y=>`<button type="button" class="bt${DH.yr===y?'':' g'}" style="margin:2px" onclick="dhSet('yr','${y}')">${y==='all'?'All years':y}</button>`).join('');
   const cards=list.map(v=>{const k=dhSystemOf(v),sn=DH_SYSTEMS.find(x=>x[0]===k)[1];return `<div class="cd" style="margin:0;padding:10px;border-left:4px solid var(--pr,#0f766e)"><div style="color:var(--mu);font-size:12px">${E(v.d)} | ${E(sn)}</div><div style="font-weight:600;margin-top:2px">${E(v.dx||v.cc||'Visit')}</div>${v.cc&&v.dx?`<div style="font-size:13px">${E(v.cc)}</div>`:''}${v.rx?`<div style="font-size:13px;color:var(--mu)">Rx: ${E(v.rx)}</div>`:''}${v.referral?`<div style="font-size:13px;color:var(--mu)">Referral: ${E(v.referral.to)}</div>`:''}<div style="font-size:12px;color:var(--mu);margin-top:4px">${E(v.byName||'')}</div></div>`}).join('');
