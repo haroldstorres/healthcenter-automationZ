@@ -1053,9 +1053,15 @@ const DH3_KEYS={
   repr:['reproductive','ovary_l','ovary_r','uterus','fallopian_tubes','vagina','prostate','breast_l','breast_r']
 };
 const DH3_SYS_OF={};Object.entries(DH3_KEYS).forEach(([sys,ks])=>ks.forEach(k=>{DH3_SYS_OF[k]=sys}));
+const DH3_COLORS={"abdominal_muscles":"b5463d","back_muscles_l":"b5463d","back_muscles_r":"b5463d","calf_l":"b5463d","calf_r":"b5463d","chest_muscles_l":"b5463d","chest_muscles_r":"b5463d","deltoid_l":"b5463d","deltoid_r":"b5463d","diaphragm":"b85a4a","foot_muscles_l":"b5463d","foot_muscles_r":"b5463d","forearm_muscles_l":"b5463d","forearm_muscles_r":"b5463d","gluteal_l":"b5463d","gluteal_r":"b5463d","hamstrings_l":"b5463d","hamstrings_r":"b5463d","hand_muscles_l":"b5463d","hand_muscles_r":"b5463d","iliopsoas_l":"b5463d","iliopsoas_r":"b5463d","adductors_l":"b5463d","adductors_r":"b5463d","intercostals_l":"b5463d","intercostals_r":"b5463d","neck_muscles_l":"b5463d","neck_muscles_r":"b5463d","pelvic_floor":"b5463d","quadriceps_l":"b5463d","quadriceps_r":"b5463d","rotator_cuff_l":"b5463d","rotator_cuff_r":"b5463d","shin_muscles_l":"b5463d","shin_muscles_r":"b5463d","shoulder_muscles_l":"b5463d","shoulder_muscles_r":"b5463d","trapezius_l":"b5463d","trapezius_r":"b5463d","upper_arm_muscles_l":"b5463d","upper_arm_muscles_r":"b5463d","cranial_nerves":"f2c14e","spinal_cord":"f2d27a","adrenal_l":"e0c068","adrenal_r":"e0c068","appendix":"c9847a","brain":"e4aaa6","brainstem":"cf8f8f","breast_l":"f0a8a0","breast_r":"f0a8a0","bronchi":"e3b7ad","cerebellum":"d99a9a","esophagus":"c98a7a","eye_l":"f4f1ea","eye_r":"f4f1ea","fallopian_tubes":"d98a8f","gallbladder":"6b8e5a","heart":"b8352c","kidney_l":"8a3f35","kidney_r":"8a3f35","colon":"c07a64","larynx":"d8b8a6","liver":"8a4a2e","lung_l":"e8a5a0","lung_r":"e8a5a0","reproductive":"d6a08c","ovary_l":"e8b36a","ovary_r":"e8b36a","pancreas":"e2c08d","pharynx":"c98a7a","pituitary":"e0a050","prostate":"c98f86","salivary_glands":"e3c7a0","small_intestine":"d99a88","spleen":"7a3f4a","stomach":"d49383","thymus":"e8c3b5","tongue":"cf7d7d","trachea":"d7a9a0","ureter_l":"b07a70","ureter_r":"b07a70","bladder":"d9a36a","uterus":"d9737a","vagina":"cf8a86","spine_cervical":"efe6d2","clavicle_l":"efe6d2","clavicle_r":"efe6d2","foot_l":"efe6d2","foot_r":"efe6d2","forearm_l":"efe6d2","forearm_r":"efe6d2","hand_l":"efe6d2","hand_r":"efe6d2","mandible":"efe6d2","patella_l":"efe6d2","patella_r":"efe6d2","spine_lumbar":"efe6d2","pelvis":"efe6d2","ribs_l":"efe6d2","ribs_r":"efe6d2","lower_leg_l":"efe6d2","lower_leg_r":"efe6d2","scapula_l":"efe6d2","scapula_r":"efe6d2","skull":"efe6d2","sternum":"efe6d2","teeth":"fbf8ef","femur_l":"efe6d2","femur_r":"efe6d2","spine_thoracic":"efe6d2","humerus_l":"efe6d2","humerus_r":"efe6d2","skin":"e9b596","aorta":"c0392b","arteries_abdomen":"c0392b","arteries_thorax":"c0392b","arteries_head":"c0392b","arteries_arm_l":"c0392b","arteries_leg_l":"c0392b","arteries_pelvis":"c0392b","arteries_arm_r":"c0392b","arteries_leg_r":"c0392b","carotid_l":"c0392b","carotid_r":"c0392b","coronary_arteries":"d6452f","vena_cava_inferior":"2e6db4","pulmonary_vessels":"8e4bb0","vena_cava_superior":"2e6db4","veins_abdomen":"2e6db4","veins_thorax":"2e6db4","veins_arm_l":"2e6db4","veins_leg_l":"2e6db4","veins_pelvis":"2e6db4","veins_arm_r":"2e6db4","veins_leg_r":"2e6db4"};
 const DH3_MODEL_URLS=f=>[new URL('models/'+f,document.baseURI).href,'https://cdn.jsdelivr.net/npm/open-anatomy-3d@0.1.0/models/'+f];
 let DH3={st:'idle',sex:'',cache:{},el:null};
 const dh3SexOf=p=>p&&p.sex==='F'?'female':'male';
+function dh3KeyOf(m){
+  let n=m.name;
+  if(!(n in DH3_COLORS)&&m.parent&&m.parent.name&&(m.parent.name in DH3_COLORS))n=m.parent.name;
+  return n.replace(/_\d+$/,'')
+}
 function dh3SystemOfMesh(m){
   let n=m.name;
   if(!(n in DH3_SYS_OF)&&m.parent&&m.parent.name&&(m.parent.name in DH3_SYS_OF))n=m.parent.name;
@@ -1091,7 +1097,7 @@ async function dh3Load(sex){
       for(const u of DH3_MODEL_URLS('anatomy-'+sex+'.glb')){try{gltf=await loader.loadAsync(u);break}catch(e){}}
       if(!gltf)throw new Error('model not found');
       const root=gltf.scene;
-      root.traverse(m=>{if(m.isMesh){m.userData.sys=dh3SystemOfMesh(m);m.material=new DH3.THREE.MeshLambertMaterial({color:0xcfd6d6,transparent:true,opacity:.3,depthWrite:false})}});
+      root.traverse(m=>{if(m.isMesh){m.userData.sys=dh3SystemOfMesh(m);m.userData.base=parseInt(DH3_COLORS[dh3KeyOf(m)]||'cfd6d6',16);m.material=new DH3.THREE.MeshLambertMaterial({color:m.userData.base,transparent:true,opacity:.5})}});
       DH3.scene.add(root);DH3.cache[sex]=root
     }
     DH3.st='ready';
@@ -1110,18 +1116,24 @@ function dh3Apply(sex,counts,sel){
   if(DH3.shown!==sex){
     DH3.shown=sex;
     const box=new T.Box3().setFromObject(root),size=box.getSize(new T.Vector3()),c=box.getCenter(new T.Vector3());
-    const dist=(size.y/2)/Math.tan(T.MathUtils.degToRad(17.5))*1.15;
+    const dist=(size.y/2)/Math.tan(T.MathUtils.degToRad(17.5))*0.95;
     DH3.controls.target.copy(c);DH3.camera.position.set(c.x,c.y,c.z+dist);DH3.controls.update()
   }
+  const anyVisits=Object.keys(counts).length>0;
   root.traverse(m=>{
     if(!m.isMesh)return;
-    const sys=m.userData.sys,isSel=sel!=='all'&&sys===sel,hasVisits=sys&&counts[sys]&&sel==='all',mat=m.material;
+    const sys=m.userData.sys,isSel=sel!=='all'&&sys===sel,hasVisits=sys&&counts[sys],mat=m.material;
     const musc=sys==='musc'&&m.parent&&m.parent.name==='muscles';
     m.visible=musc?sel==='musc':true;
-    if(sys==='inte'){mat.color.set(isSel||hasVisits?0x0f766e:0xd9a98c);mat.opacity=isSel?.45:hasVisits?.25:.08;return}
-    if(isSel){mat.color.set(0x0f766e);mat.opacity=.95}
-    else if(hasVisits){mat.color.set(0x14b8a6);mat.opacity=.7}
-    else{mat.color.set(0xcfd6d6);mat.opacity=sel==='all'?.3:.14}
+    mat.color.setHex(m.userData.base);
+    let op;
+    if(sys==='inte')op=isSel?.6:.08;
+    else if(sel!=='all')op=isSel?1:.1;
+    else op=!anyVisits||hasVisits?.95:.3;
+    if(sys==='musc'&&!musc&&sel==='all')op=Math.min(op,.35);
+    mat.emissive.setHex(isSel||(sel==='all'&&hasVisits)?0x331a1a:0);
+    const wasTransparent=mat.transparent;mat.opacity=op;mat.transparent=op<.95;mat.depthWrite=!mat.transparent;
+    if(wasTransparent!==mat.transparent)mat.needsUpdate=true
   });
   DH3.render()
 }
