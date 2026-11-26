@@ -149,9 +149,9 @@ function loadP(){
 }
 onAuthStateChanged(auth,async u=>{
   if(setting)return;
-  if(!u){U=null;if(!KEEPD){try{Object.keys(sessionStorage).filter(k=>k.startsWith('rhuDraft')).forEach(k=>sessionStorage.removeItem(k))}catch(e){}}KEEPD=false;try{mode=(await getDoc(doc(db,'meta','setup'))).exists()?'login':'setup'}catch(e){mode='login'}return R()}
+  if(!u){U=null;lastClear();if(!KEEPD){try{Object.keys(sessionStorage).filter(k=>k.startsWith('rhuDraft')).forEach(k=>sessionStorage.removeItem(k))}catch(e){}}KEEPD=false;try{mode=(await getDoc(doc(db,'meta','setup'))).exists()?'login':'setup'}catch(e){mode='login'}return R()}
   try{const d=await getDoc(doc(db,'users',u.uid));if(d.exists()&&d.data().active!==false){U={uid:u.uid,...d.data()};try{S=(await getDoc(doc(db,'meta','settings'))).data()||{}}catch(e){S={}}mode='app';pg='dash';msg='';t=Date.now();try{Object.keys(sessionStorage).filter(k=>k.startsWith('rhuDraft')&&!k.endsWith(':'+u.uid)).forEach(k=>sessionStorage.removeItem(k))}catch(e){}await loadP().catch(()=>{});setTimeout(()=>qSweep(),3000);{const dd=dGet();if(dd&&dd.open&&dd.day===today()&&CROLES.includes(U.role)&&P.find(x=>x.id===dd.cp)){cp=dd.cp;cq=dd.cq||null;pg='consult';RXL=[]}else{const dr=dRegGet();if(dr&&dr.day===today()&&canReg()){pg='reg';REGRESTORE=true}else{const fm=fmGet();if(fm&&fm.day===today()&&fm.pg){FMPEND=fm;setTimeout(fmResume,600)}else{const lb=labGet();if(lb&&lb.day===today()&&lb.v&&Object.keys(lb.v).length&&lbRolesOk()){pg='lab';setTimeout(()=>go('lab'),300)}}}}}}else mode='orphan'}catch(e){mode='orphan'}
-  R();
+  R();lastRestore();
 });
 let PXN=0,PXU=null;
 const pxBadge=()=>U&&U.role==='pharmacist'&&PXN>0?`<span class="nbd pxb" aria-label="${PXN} to dispense">${PXN>99?'99+':PXN}</span>`:'';
@@ -336,7 +336,7 @@ async function doSetup(){
 }
 async function out(){await lg('Signed out');await signOut(auth)}
 let BQ=null;
-function go(k,keep){dOpen(false);RXL=[];dmClose();if(!keep)bk=[];pg=k;q=keep&&BQ?BQ:'';cp=null;cq=null;if(k!=='reg')regHH='';R();scrollTo(0,0);if(k==='users')loadUsers();fmClose();if(k==='pharm'){stq='';stf='all';sio=null;sed='';loadPh()}if(k==='appr')loadAppr();if(k==='lab')loadLab();if(k==='imm')loadIm();if(k==='rp')rpInit();if(k==='ref')loadRef();if(k==='fu'){loadFu();loadPn()}if(k==='pn')loadPn();if(k==='inv')loadInv();if(k==='nt')loadNt();if(k==='mc'){MC.r='week';MC.q='';MC.doc='';[MC.from,MC.to]=mcRange('week');loadMc()}if(k==='audit')loadAudit();if(k==='queue'||k==='consult')fetchQ().then(refreshQ)}
+function go(k,keep){lastPut(k);dOpen(false);RXL=[];dmClose();if(!keep)bk=[];pg=k;q=keep&&BQ?BQ:'';cp=null;cq=null;if(k!=='reg')regHH='';R();scrollTo(0,0);if(k==='users')loadUsers();fmClose();if(k==='pharm'){stq='';stf='all';sio=null;sed='';loadPh()}if(k==='appr')loadAppr();if(k==='lab')loadLab();if(k==='imm')loadIm();if(k==='rp')rpInit();if(k==='ref')loadRef();if(k==='fu'){loadFu();loadPn()}if(k==='pn')loadPn();if(k==='inv')loadInv();if(k==='nt')loadNt();if(k==='mc'){MC.r='week';MC.q='';MC.doc='';[MC.from,MC.to]=mcRange('week');loadMc()}if(k==='audit')loadAudit();if(k==='queue'||k==='consult')fetchQ().then(refreshQ)}
 const rxApprove=()=>Array.isArray(S.rxApprove)?S.rxApprove:[];
 const rxExempt=()=>Array.isArray(S.rxExempt)?S.rxExempt:[];
 const needApproval=items=>U.role!=='doctor'&&rxApprove().includes(U.role)&&items.some(i=>!rxExempt().some(x=>x&&i.drug.toLowerCase().includes(x.toLowerCase())));
@@ -1086,7 +1086,7 @@ async function ahSave(id){
 function prof(){
   const p=P.find(x=>x.id===pid),lv=LV[U.role]||'basic',m=P.filter(x=>x.hh===p.hh&&x.id!==p.id);
   return `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="bt g" onclick="goBack('patients')">Back to ${E(backLbl('patients'))}</button>${canReg()?`<button class="bt g" onclick="qAddP()">Add to queue</button>`:''}${CROLES.includes(U.role)?`<button class="bt" onclick="startC('${p.id}')">New consultation</button>`:''}${canEdit()?`<button class="bt g" onclick="editP()">Edit</button>`:''}${can('adminDelete')?`<button class="bt g" onclick="delP()">Delete</button>`:''}</div><div class="cd" style="margin-top:12px"><h2 style="margin:0">${E(pn(p))}</h2><div style="color:var(--mu)">${p.id} | ${age(p.dob)} | ${p.sex==='M'?'Male':'Female'}</div>${lv==='rx'?'':`<div class="fm" style="margin-top:12px"><div><label>Birthdate</label>${p.dob}</div><div><label>Address</label>${E(p.pu+', '+p.br)}</div><div><label>Contact</label>${E(p.tel||'None')}</div><div><label>PhilHealth</label>${E(p.ph||'None')}</div><div><label>Household</label><a href="#" onclick="openHH('${p.hh}');return false">${p.hh}</a></div></div>`}</div>${lv==='basic'?'':ahCard(p,CROLES.includes(U.role))}${lv==='rx'?'':yakCard(p,canEdit())}${lv==='full'&&pnElig(p)?'<div class="cd" id="pnc">Loading...</div>':''}${lv==='rx'?'':`<div class="cd"><h3 style="margin-top:0">Household members</h3>${m.length?m.map(x=>`<a href="#" onclick="view('${x.id}');return false" style="margin-right:14px">${E(pn(x))} (${age(x.dob)})</a>`).join(''):'No other members.'}</div>`}<div class="cd"><h3 style="margin-top:0">${lv==='rx'?'Prescriptions':'Visit history'}</h3><div id="hist" class="ov">${lv==='basic'?'<p style="color:var(--mu)">Clinical history is restricted for your role.</p>':'Loading...'}</div></div>${lv==='full'?`<div class="cd"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0">Lab results</h3>${oxCan()?`<button class="bt g" onclick="oxOpen('${id}')">Add outside result</button>`:''}</div><div id="lox"></div><div id="labh" class="ov">Loading...</div></div>`:U.role==='frontdesk'?`<div class="cd"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0">Outside lab result</h3><p style="color:var(--mu);margin:4px 0 0;font-size:14px">The patient brought a result from another lab or hospital. The doctor will see it on the profile.</p></div><button class="bt g" onclick="oxOpen('${id}')">Add outside result</button></div><div id="lox" style="margin-top:12px"></div></div>`:''}`}
-async function view(id,np,quiet){
+async function view(id,np,quiet){lastPut('prof',id);
   if(!np&&(pg!=='prof'||pid!==id))navPush();
   pid=id;pg='prof';if(!quiet){lg('Viewed '+id);R();scrollTo(0,0)}
   const lv=LV[U.role]||'basic',h=$('hist'),PR=lv==='full'&&(U.role==='doctor'||canRx());if(lv==='basic')return;if(lv==='full'&&quiet!==1){loadLabH(id);loadPnH(id)}
@@ -1584,6 +1584,16 @@ function dRegRestore(){
 }
 /* Drafts for pop-up forms (Add medicine, Stock in, Receive vaccine, Register pregnancy, Prenatal visit) and for lab results typed on the Lab page.
    Kept in this browser tab only. They survive a refresh and the automatic sign-out for inactivity (for the same user), and are erased on a normal sign-out. */
+/* remember the current page so a refresh lands back on it */
+function lastPut(k,id){if(!U||k==='reg'||k==='edit')return;try{sessionStorage.setItem('rhuLastPage',JSON.stringify({uid:U.uid,pg:k,pid:id||null}))}catch(e){}}
+function lastClear(){try{sessionStorage.removeItem('rhuLastPage')}catch(e){}}
+function lastRestore(){
+  let l=null;try{l=JSON.parse(sessionStorage.getItem('rhuLastPage')||'null')}catch(e){}
+  if(!U||!l||l.uid!==U.uid||pg!=='dash'||l.pg==='dash')return;
+  if(l.pg==='prof'){if(l.pid&&P.find(x=>x.id===l.pid))view(l.pid,1);return}
+  const n=NAV.find(x=>x[0]===l.pg);
+  if(l.pg==='ann'?canAnn():(n&&(!n[3]||n[3].includes(U.role))))go(l.pg)
+}
 let KEEPD=false,FMRE=null,FMPEND=null;
 const fmKey=()=>U?'rhuDraftM:'+U.uid:'',labKey=()=>U?'rhuDraftL:'+U.uid:'';
 const dsGet=k=>{try{return k?JSON.parse(sessionStorage.getItem(k)||'null'):null}catch(e){return null}};
