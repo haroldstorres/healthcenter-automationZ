@@ -1453,7 +1453,8 @@ async function setSound(v,el){
   try{await setDoc(doc(db,'displayConfig','main'),{sound:v,at:serverTimestamp()},{merge:true});await lg('Display sound '+(v?'on':'off'))}
   catch(x){if(el)el.checked=!v;if(er)er.textContent='Could not save. Check your connection.'}
 }
-const roomsCard=()=>`<div class="cd"><h3 style="margin-top:0">Consultation rooms</h3><p style="color:var(--mu);margin-top:0">How many consultation rooms the health center uses. Doctors and midwives choose their room before starting a consultation, and the waiting-area display announces it.</p><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input id="rmn" type="number" min="1" max="20" value="${rooms()}" style="width:90px"><button class="bt" onclick="setRooms()">Save</button></div><div class="er2" id="rme"></div></div>`;
+function roomStep(d){const i=$('rmn');if(i)i.value=Math.min(20,Math.max(1,(parseInt(i.value,10)||1)+d))}
+const roomsCard=()=>`<div class="cd"><h3 style="margin-top:0">Consultation rooms</h3><p style="color:var(--mu);margin-top:0">How many consultation rooms the health center uses. Doctors and midwives choose their room before starting a consultation, and the waiting-area display announces it.</p><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="bt g" aria-label="Fewer rooms" onclick="roomStep(-1)" style="min-width:40px">&minus;</button><input id="rmn" type="number" min="1" max="20" value="${rooms()}" style="width:80px;text-align:center"><button type="button" class="bt g" aria-label="More rooms" onclick="roomStep(1)" style="min-width:40px">+</button><span style="color:var(--mu);font-size:13px">1 to 20</span><button class="bt" onclick="setRooms()">Save</button></div><div class="er2" id="rme"></div></div>`;
 const usr=()=>`<h2 style="margin-top:0">Users</h2>${userTabs()}${U.role==='admin'?'<div class="cd" style="font-size:14px">Rooms, sound, letterhead and lists are now in <a href="#" onclick="go(\'set\');return false">Settings</a>.</div>':''}<div class="cd"><h3 style="margin-top:0">Add staff account</h3><div class="fm"><div><label>Last name</label><input id="u1a"></div><div><label>First name</label><input id="u1b"></div><div><label>Middle name (optional)</label><input id="u1c"></div><div><label>Email</label><input id="u2" type="email"></div><div><label>Temporary password (8+ characters)</label><input id="u3" type="text"></div><div><label>PRC license no. (optional)</label><input id="u5"></div><div><label>Role</label><select id="u4">${ROLES.filter(r=>r[0]!=='developer'||U.role==='developer').map(r=>`<option value="${r[0]}">${r[1]}</option>`).join('')}</select></div></div><div class="er2" id="ue"></div><button class="bt" id="ub" style="margin-top:12px" onclick="addStaff()">Create account</button></div><div class="cd"><h3 style="margin-top:0">Demo data (for testing only)</h3><p style="color:var(--mu);margin-top:0">Creates 6 demo staff accounts (doctor, midwife, pharmacist, medtech, BHW, front desk) and 20 made-up patients in 7 households. Emails look like <b>demo.doctor@example.com</b>. Do not use real patient data here.</p><div class="fm"><div><label>Password for the demo accounts (8+ characters)</label><input id="dp" type="text" autocomplete="off"></div></div><div class="er2" id="de"></div><button class="bt" id="db" style="margin-top:12px" onclick="loadDemo()">Load demo data</button></div><div class="cd ov"><div id="ul">Loading...</div></div>`;
 const ULM={};
 async function editLic(id){
@@ -2425,11 +2426,36 @@ async function loadLabH(id){
   }catch(e){h.textContent='Could not load lab results.'}
 }
 const LDEF=['CBC','Urinalysis','Fecalysis','Blood sugar (FBS)','Blood sugar (RBS)','Lipid profile','Pregnancy test','Sputum AFB'];
+/* ---------- Settings: friendly list editors ---------- */
+const CE={},CE0={};
+const ceChip='display:inline-flex;gap:6px;align-items:center;border:1px solid var(--bd,#cbd5e1);border-radius:999px;padding:4px 6px 4px 12px;font-size:14px;background:#fff';
+function ceBox(id,items,ph,max,len){
+  CE[id]=[...items];CE0[id]=JSON.stringify(items);CE[id+'_m']=[max,len];
+  setTimeout(()=>cePaint(id),0);
+  return `<div><div id="cec_${id}" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div><div style="display:flex;gap:8px;flex-wrap:wrap"><input id="cei_${id}" placeholder="${E(ph)}" maxlength="${len}" onkeydown="ceKey(event,'${id}')" style="flex:1;min-width:200px"><button type="button" class="bt g" onclick="ceAdd('${id}')">Add</button></div><div id="ces_${id}" style="font-size:13px;color:var(--mu);margin-top:6px"></div></div>`
+}
+function cePaint(id){
+  const c=$('cec_'+id);if(!c)return;const l=CE[id],max=CE[id+'_m'][0];
+  c.innerHTML=l.length?l.map((t,i)=>`<span style="${ceChip}">${E(t)}<button type="button" aria-label="Remove ${E(t)}" onclick="ceRm('${id}',${i})" style="border:0;background:none;cursor:pointer;font-size:18px;line-height:1;padding:0 6px">&times;</button></span>`).join(''):'<span style="color:var(--mu);font-size:14px">Nothing here yet. Type below and press Enter.</span>';
+  const st=$('ces_'+id);if(st){const dirty=JSON.stringify(l)!==CE0[id];st.innerHTML=l.length+' of '+max+' used'+(dirty?' &nbsp;<b style="color:var(--wa,#b45309)">Unsaved changes. Press Save.</b>':'')}
+}
+function ceNote(id,t){const st=$('ces_'+id);if(st)st.innerHTML='<b style="color:var(--wa,#b45309)">'+E(t)+'</b>'}
+function ceAdd(id){
+  const i=$('cei_'+id),[max,len]=CE[id+'_m'];if(!i)return;
+  const v=i.value.trim().slice(0,len);if(!v)return;
+  if(CE[id].some(x=>x.toLowerCase()===v.toLowerCase())){ceNote(id,'"'+v+'" is already in the list.');return}
+  if(CE[id].length>=max){ceNote(id,'The list is full ('+max+' items). Remove one first.');return}
+  CE[id].push(v);i.value='';cePaint(id);i.focus()
+}
+function ceKey(e,id){if(e.key==='Enter'){e.preventDefault();ceAdd(id)}}
+function ceRm(id,i){CE[id].splice(i,1);cePaint(id)}
+function ceReset(id,arr){CE[id]=[...arr];cePaint(id)}
+function ceSaved(id){CE0[id]=JSON.stringify(CE[id]);cePaint(id)}
 const labList=()=>Array.isArray(S.labTests)?S.labTests:LDEF;
 async function setLabTests(){
-  const er=$('lte'),l=[...new Set($('lbt').value.split('\n').map(x=>x.trim()).filter(Boolean))];
-  try{await setDoc(doc(db,'meta','settings'),{labTests:l,by:U.name,at:serverTimestamp()},{merge:true});S.labTests=l;await lg('Lab test list updated');er.textContent='';sDone('Lab test list saved.')}
-  catch(x){er.textContent='Could not save the list. Check your connection.'}
+  const er=$('lte'),l=CE.lbt.slice();
+  try{await setDoc(doc(db,'meta','settings'),{labTests:l,by:U.name,at:serverTimestamp()},{merge:true});S.labTests=l;await lg('Lab test list updated');er.textContent='';ceSaved('lbt');sDone('Lab test list saved.')}
+  catch(x){er.textContent=x.code==='permission-denied'?'You do not have permission. Publish the latest firestore.rules first.':'Could not save the list. Check your connection.'}
 }
 /* ---------- Immunization ---------- */
 const VAX=[['bcg','BCG',0],['hepb','Hep B (birth)',0],['penta1','Penta 1',42],['opv1','OPV 1',42],['pcv1','PCV 1',42],['penta2','Penta 2',70],['opv2','OPV 2',70],['pcv2','PCV 2',70],['penta3','Penta 3',98],['opv3','OPV 3',98],['pcv3','PCV 3',98],['ipv1','IPV 1',98],['ipv2','IPV 2',274],['mmr1','MMR 1',274],['mmr2','MMR 2',365]];
@@ -2905,24 +2931,36 @@ const RSDEF=['Check-up','Fever','Cough and colds','Prenatal check-up','Immunizat
 const rsList=()=>Array.isArray(S.visitReasons)?S.visitReasons:RSDEF;
 const rsDl=()=>`<datalist id="rsl">${rsList().map(x=>`<option value="${E(x)}">`).join('')}</datalist>`;
 function setTab(k){setCur=k;document.querySelectorAll('.stp').forEach(e=>e.style.display=e.dataset.t===k?'block':'none');document.querySelectorAll('.stt button').forEach(b=>b.className='bt'+(b.dataset.t===k?'':' g'))}
-const labTestsCard=()=>`<div class="cd"><h3 style="margin-top:0">Lab tests offered</h3><p style="color:var(--mu);margin-top:0;font-size:14px">One test per line. These appear as suggestions when a doctor requests a lab test. Applies the next time each person logs in.</p><textarea id="lbt" rows="8">${E(labList().join('\n'))}</textarea><div class="er2" id="lte"></div><button class="bt" style="margin-top:10px" onclick="setLabTests()">Save list</button></div>`;
-const reasonsCard=()=>`<div class="cd"><h3 style="margin-top:0">Visit reasons</h3><p style="color:var(--mu);margin-top:0;font-size:14px">One reason per line. These show as suggestions in the "Reason for visit" box when a patient is added to the queue. Staff can still type anything else.</p><textarea id="rsv" rows="8">${E(rsList().join('\n'))}</textarea><div class="er2" id="rse"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="bt" onclick="setReasons()">Save list</button><button class="bt g" onclick="$('rsv').value=RSDEF.join('\\n')">Use the default list</button></div><p style="color:var(--mu);font-size:13px;margin:10px 0 0">The vaccine list follows the DOH EPI schedule built into the app, because the due dates and the vaccine stock depend on it. It is not changed here.</p></div>`;
+const labTestsCard=()=>`<div class="cd"><h3 style="margin-top:0">Lab tests offered</h3><p style="color:var(--mu);margin-top:0;font-size:14px">These show as suggestions when a doctor requests a lab test. Type a test name and press Enter to add it. Click the &times; to remove one. Applies the next time each person logs in.</p>${ceBox('lbt',labList(),'e.g. Hemoglobin A1c',80,60)}<div class="er2" id="lte"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="bt" onclick="setLabTests()">Save list</button><button class="bt g" onclick="ceReset('lbt',LDEF)">Use the default list</button></div></div>`;
+const reasonsCard=()=>`<div class="cd"><h3 style="margin-top:0">Visit reasons</h3><p style="color:var(--mu);margin-top:0;font-size:14px">These show as suggestions in the "Reason for visit" box when a patient is added to the queue. Staff can still type anything else. Type a reason and press Enter to add it. Click the &times; to remove one.</p>${ceBox('rsv',rsList(),'e.g. Check-up',60,60)}<div class="er2" id="rse"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="bt" onclick="setReasons()">Save list</button><button class="bt g" onclick="ceReset('rsv',RSDEF)">Use the default list</button></div><p style="color:var(--mu);font-size:13px;margin:10px 0 0">The vaccine list follows the DOH EPI schedule built into the app, because the due dates and the vaccine stock depend on it. It is not changed here.</p></div>`;
 async function setReasons(){
-  const er=$('rse'),l=[...new Set($('rsv').value.split('\n').map(x=>x.trim().slice(0,60)).filter(Boolean))].slice(0,60);
+  const er=$('rse'),l=CE.rsv.slice(0,60);
   er.textContent='';
-  try{await setDoc(doc(db,'meta','settings'),{visitReasons:l,by:U.name,at:serverTimestamp()},{merge:true});S.visitReasons=l;await lg('Visit reasons updated ('+l.length+')');sDone('Visit reasons saved.')}
+  try{await setDoc(doc(db,'meta','settings'),{visitReasons:l,by:U.name,at:serverTimestamp()},{merge:true});S.visitReasons=l;await lg('Visit reasons updated ('+l.length+')');ceSaved('rsv');sDone('Visit reasons saved.')}
   catch(x){er.textContent=x.code==='permission-denied'?'You do not have permission. Publish the latest firestore.rules first.':'Could not save the list. Check your connection.'}
 }
+function icdPaintC(){
+  const b=$('icdl');if(!b)return;const l=CE.icd;
+  b.innerHTML=l.length?`<div class="ov"><table><thead><tr><th>Code</th><th>Diagnosis</th><th>Body system</th><th></th></tr></thead><tbody>${l.map((x,i)=>`<tr><td><b>${E(x.c)}</b></td><td>${E(x.n)}</td><td>${E((DH_SYSTEMS.find(d=>d[0]===x.s)||['','Other'])[1])}</td><td><button type="button" class="bt g" style="padding:2px 10px" onclick="icdRmC(${i})">Remove</button></td></tr>`).join('')}</tbody></table></div>`:'<p style="color:var(--mu);margin:0">No added codes yet. The built-in list is still available.</p>';
+  const st=$('icds');if(st)st.innerHTML=l.length+' of 300 added'+(JSON.stringify(l)!==CE0.icd?' &nbsp;<b style="color:var(--wa,#b45309)">Unsaved changes. Press Save.</b>':'')
+}
+function icdAddC(){
+  const er=$('icde'),c=$('icc').value.trim().toUpperCase().replace(/\s+/g,''),n=$('icn').value.trim().slice(0,120),sy=$('ics').value;er.textContent='';
+  if(!/^[A-Z][0-9A-Z]{1,2}(\.[0-9A-Z]{1,4})?$/.test(c))return er.textContent='Enter a valid ICD-10 code, like E11.9 or J06.9.';
+  if(!n)return er.textContent='Enter the name of the diagnosis.';
+  const i=CE.icd.findIndex(x=>x.c===c);
+  if(i>=0)CE.icd[i]={c,n,s:sy};else{if(CE.icd.length>=300)return er.textContent='The list is full (300 codes).';CE.icd.push({c,n,s:sy})}
+  $('icc').value='';$('icn').value='';icdPaintC();$('icc').focus()
+}
+function icdRmC(i){CE.icd.splice(i,1);icdPaintC()}
 async function setIcdCustom(){
-  const er=$('icde'),seen=new Set(),l=[];
-  $('icdt').value.split('\n').forEach(r=>{const a=r.split('|').map(x=>x.trim()),c=(a[0]||'').toUpperCase().slice(0,10),n=(a[1]||'').slice(0,120),sy=(a[2]||'').toLowerCase();if(!c||!n||seen.has(c))return;seen.add(c);l.push({c,n,s:ICD_SYSKEYS.includes(sy)?sy:'othr'})});
-  er.textContent='';
-  if(l.length>300)return er.textContent='Maximum is 300 added codes.';
-  try{await setDoc(doc(db,'meta','settings'),{icdCustom:l,by:U.name,at:serverTimestamp()},{merge:true});S.icdCustom=l;await lg('Diagnosis codes updated ('+l.length+')');sDone('Diagnosis codes saved. They now appear in the consultation search.')}
+  const er=$('icde'),l=CE.icd.slice();er.textContent='';
+  try{await setDoc(doc(db,'meta','settings'),{icdCustom:l,by:U.name,at:serverTimestamp()},{merge:true});S.icdCustom=l;CE0.icd=JSON.stringify(l);icdPaintC();await lg('Diagnosis codes updated ('+l.length+')');sDone('Diagnosis codes saved. They now appear in the consultation search.')}
   catch(x){er.textContent=x.code==='permission-denied'?'You do not have permission. Publish the latest firestore.rules first.':'Could not save the list. Check your connection.'}
 }
-const icdCard=()=>`<div class="cd"><h3 style="margin-top:0">Diagnosis codes (ICD-10)</h3><p style="color:var(--mu);margin-top:0;font-size:14px">The built-in list has ${ICD10.length} common primary care diagnoses. Add more here, one per line, as <b>CODE | Name | system</b>. A code that is already built in is replaced by your version. System is optional: ${ICD_SYSKEYS.join(', ')} (default: othr).</p><textarea id="icdt" rows="10" placeholder="E11.9 | Type 2 diabetes mellitus without complications | endo">${E(icdCustom().map(x=>x.c+' | '+x.n+' | '+(x.s||'othr')).join('\n'))}</textarea><div class="er2" id="icde"></div><button class="bt" style="margin-top:10px" onclick="setIcdCustom()">Save codes</button></div>`;
-const setPg=()=>`<h2 style="margin-top:0">Settings</h2><p style="color:var(--mu);margin-top:-6px">Clinic details and lists that the health center can change without the developer. Permissions and roles stay with the developer.</p><div class="dt stt">${SET_T.map(([k,t])=>`<button class="bt${setCur===k?'':' g'}" data-t="${k}" onclick="setTab('${k}')">${t}</button>`).join('')}</div>`
+const icdCard=()=>{CE.icd=icdCustom().map(x=>({c:x.c,n:x.n,s:x.s||'othr'}));CE0.icd=JSON.stringify(CE.icd);setTimeout(icdPaintC,0);
+  return `<div class="cd"><h3 style="margin-top:0">Diagnosis codes (ICD-10)</h3><p style="color:var(--mu);margin-top:0;font-size:14px">The app already has ${ICD10.length} common primary care diagnoses. Add any code that is missing here. It then appears in the diagnosis search in Consultation. If you add a code that is already built in, your version is used.</p><div class="fm"><div><label>ICD-10 code</label><input id="icc" placeholder="E11.9" maxlength="10" style="text-transform:uppercase"></div><div style="grid-column:span 2"><label>Diagnosis name</label><input id="icn" placeholder="Type 2 diabetes mellitus without complications" maxlength="120" onkeydown="if(event.key==='Enter'){event.preventDefault();icdAddC()}"></div><div><label>Body system</label><select id="ics">${DH_SYSTEMS.map(d=>`<option value="${d[0]}"${d[0]==='othr'?' selected':''}>${E(d[1])}</option>`).join('')}</select></div></div><div style="margin-top:8px"><button type="button" class="bt g" onclick="icdAddC()">Add to list</button></div><div id="icdl" style="margin-top:12px"></div><div id="icds" style="font-size:13px;color:var(--mu);margin-top:6px"></div><div class="er2" id="icde"></div><button class="bt" style="margin-top:10px" onclick="setIcdCustom()">Save codes</button></div>`};
+const setPg=()=>`<h2 style="margin-top:0">Settings</h2><p style="color:var(--mu);margin-top:-6px">Change your clinic details and lists here. Pick a tab, make your changes, then press the Save button on that tab. Permissions and roles stay with the developer.</p><div class="dt stt">${SET_T.map(([k,t])=>`<button class="bt${setCur===k?'':' g'}" data-t="${k}" onclick="setTab('${k}')">${t}</button>`).join('')}</div>`
   +[['lh',lhCard],['pl',placesCard],['rm',roomsCard],['snd',soundCard],['lab',labTestsCard],['rs',reasonsCard],['icd',icdCard]].map(([k,f])=>`<div class="stp" data-t="${k}" style="display:${setCur===k?'block':'none'}">${f()}</div>`).join('');
 
 /* ---------- Prenatal ---------- */
@@ -3304,6 +3342,6 @@ document.addEventListener('change',e=>{
 });
 addEventListener('keydown',e=>{if(e.key==='Escape'&&DPS){dpClose();e.stopImmediatePropagation()}},true);
 addEventListener('resize',dpPlace);addEventListener('scroll',dpPlace,true);
-Object.assign(window,{setIcdCustom,dh3Hold,dh3Spin,icdSearch,icdPick,icdRemove,dh3SetDrag,dhSet,dh3Layer,dh3Zoom,dh3Reset,yakOpen,yakSave,fpeOpen,fpeSave,ntMute,ntToggle,ntGo,setTab,setReasons,RSDEF,invTab,invSetK,invSq,invSetT,invSetR,invQuick,invPrintStock,invCsvStock,invPrintRo,invCsvRo,invPrintHist,invCsvHist,invPrintSum,invCsvSum,callQ,oxOpen,oxPick,oxSave,setLabAttach,setLabRole,lbPick,lbRm,lbView,lbVX,stCall,stDone,stBack,snSync,phIn,rfSetF,rfSq,rfSet,rfRet,mcSetR,mcApply,mcSq,mcDoc,mcCsv,rxDspOpen,rxDspChg,rxDspGo,rxWarn,qNew,rxOpen,rxSave,vxIn,vxInSave,vxAdj,vaChg,vxAdjSave,fuQuick,fuDone,fuAll,fuSetF,fuSetT,fuSetB,fuSq,fuPrint,pnSetF,pnSetB,pnSq,pnPrint,pnPick,pnFind,pnForm,pnEdd,pnSave,pnVisit,pnNv,pnVisitSave,pnClose,pnCloseSave,pnBanner,rmRx,rpGo,rpPreset,rpPrint,rpCsv,ioFile,ioShow,ioRun,ioTemplate,ioExport,goBack,dmOpen,dmMed,dmClose,dmGo,stSearch,stFlt,siOpen,siClose,siSum,siSave,saOpen,saChg,saSave,slF,slCsv,ahOpen,ahSave,dxPer,dxPick,pSort,addDev,removeDev,plSum,dvTab,annDuChange,$,rows,go,out,doLogin,doSetup,view,save,addStaff,setActive,loadDemo,setPower,setIdle,viewAs,imSet,imGive,setLabTests,lbSave,setVitalsRole,setReasonRole,rOpen,rSave,qClose,backupAll,stNew,dispense,stSave,stAdd,fmClose,stFill,seClose,seSave,vOpen,vSave,removeUser,editP,saveEdit,delP,sq,openHH,addMember,qAdd,qAskV,qVGo,qVX,qAddP,qSearch,qCancel,startQ,startC,releaseQ,brChg,savePlaces,plRow,apApprove,apReject,saveRxApprove,setRxRole,editLic,lhPick,lhNoLogo,lhSave,printRx,certOpen,certGo,setAnnRole,setSound,postAnn,clearAnn,recallQ,setMyRoom,setRooms,cSearch,rmRx,saveC,cancelC});
+Object.assign(window,{LDEF,setIcdCustom,ceAdd,ceKey,ceRm,ceReset,icdAddC,icdRmC,roomStep,dh3Hold,dh3Spin,icdSearch,icdPick,icdRemove,dh3SetDrag,dhSet,dh3Layer,dh3Zoom,dh3Reset,yakOpen,yakSave,fpeOpen,fpeSave,ntMute,ntToggle,ntGo,setTab,setReasons,RSDEF,invTab,invSetK,invSq,invSetT,invSetR,invQuick,invPrintStock,invCsvStock,invPrintRo,invCsvRo,invPrintHist,invCsvHist,invPrintSum,invCsvSum,callQ,oxOpen,oxPick,oxSave,setLabAttach,setLabRole,lbPick,lbRm,lbView,lbVX,stCall,stDone,stBack,snSync,phIn,rfSetF,rfSq,rfSet,rfRet,mcSetR,mcApply,mcSq,mcDoc,mcCsv,rxDspOpen,rxDspChg,rxDspGo,rxWarn,qNew,rxOpen,rxSave,vxIn,vxInSave,vxAdj,vaChg,vxAdjSave,fuQuick,fuDone,fuAll,fuSetF,fuSetT,fuSetB,fuSq,fuPrint,pnSetF,pnSetB,pnSq,pnPrint,pnPick,pnFind,pnForm,pnEdd,pnSave,pnVisit,pnNv,pnVisitSave,pnClose,pnCloseSave,pnBanner,rmRx,rpGo,rpPreset,rpPrint,rpCsv,ioFile,ioShow,ioRun,ioTemplate,ioExport,goBack,dmOpen,dmMed,dmClose,dmGo,stSearch,stFlt,siOpen,siClose,siSum,siSave,saOpen,saChg,saSave,slF,slCsv,ahOpen,ahSave,dxPer,dxPick,pSort,addDev,removeDev,plSum,dvTab,annDuChange,$,rows,go,out,doLogin,doSetup,view,save,addStaff,setActive,loadDemo,setPower,setIdle,viewAs,imSet,imGive,setLabTests,lbSave,setVitalsRole,setReasonRole,rOpen,rSave,qClose,backupAll,stNew,dispense,stSave,stAdd,fmClose,stFill,seClose,seSave,vOpen,vSave,removeUser,editP,saveEdit,delP,sq,openHH,addMember,qAdd,qAskV,qVGo,qVX,qAddP,qSearch,qCancel,startQ,startC,releaseQ,brChg,savePlaces,plRow,apApprove,apReject,saveRxApprove,setRxRole,editLic,lhPick,lhNoLogo,lhSave,printRx,certOpen,certGo,setAnnRole,setSound,postAnn,clearAnn,recallQ,setMyRoom,setRooms,cSearch,rmRx,saveC,cancelC});
 ['stAdd','siOpen','pnVisit','pnForm','vxIn'].forEach(fmWrap);
 </script></body></html>
