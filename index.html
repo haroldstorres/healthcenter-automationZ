@@ -1111,14 +1111,29 @@ async function dh3Load(sex){
         let top=m;while(top.parent&&top.parent!==root)top=top.parent;
         m.userData.grp=top.name;m.userData.sys=dh3SystemOfMesh(m);
         if(top.name==='skin'){m.userData.sys='inte';m.material=skinMat;m.renderOrder=10;m.raycast=()=>{};return}
-        m.userData.base=parseInt(DH3_COLORS[dh3KeyOf(m)]||'cfd6d6',16);
-        m.material=new DH3.THREE.MeshStandardMaterial({color:m.userData.base,roughness:rough[top.name]||.5,metalness:0})
+        const colorKey=dh3KeyOf(m);
+        let base=parseInt(DH3_COLORS[colorKey]||'cfd6d6',16);
+        if(top.name==='muscles'){
+          // each muscle gets a slightly different shade so they read as separate muscles
+          let hash=0;for(const ch of colorKey)hash=(hash*31+ch.charCodeAt(0))%997;
+          base=new DH3.THREE.Color(base).offsetHSL(0,0,((hash%17)-8)/110).getHex()
+        }
+        m.userData.base=base;
+        m.material=new DH3.THREE.MeshStandardMaterial({color:base,roughness:rough[top.name]||.5,metalness:0});
+        if(top.name==='muscles')dh3AddFibres(m.material)
       });
       DH3.scene.add(root);DH3.cache[sex]=root
     }
     DH3.st='ready';
   }catch(e){DH3.st='fail';console.warn('3D body map failed',e)}
   dhPaint()
+}
+function dh3AddFibres(mat){
+  // fine stripes in world space to fake muscle fibres
+  mat.onBeforeCompile=sh=>{
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWorldPos;').replace('#include <begin_vertex>','#include <begin_vertex>\nvWorldPos=(modelMatrix*vec4(transformed,1.0)).xyz;');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vWorldPos;').replace('#include <color_fragment>','#include <color_fragment>\nfloat fibreA=sin((vWorldPos.x*0.8+vWorldPos.z*0.6)*520.0)*0.5+0.5;float fibreB=sin((vWorldPos.x*0.5-vWorldPos.z)*110.0+vWorldPos.y*7.0)*0.5+0.5;diffuseColor.rgb*=0.78+0.14*fibreA+0.16*fibreB;')
+  }
 }
 function dh3SkinMaterial(){
   const T=DH3.THREE;
@@ -1153,10 +1168,10 @@ function dh3Apply(sex,counts,sel){
     m.visible=grp==='muscles'?(DH3.layers.muscles||sel==='musc'):DH3.layers[grp]!==false;
     const hot=DH3.hoverKey&&dh3KeyOf(m)===DH3.hoverKey;
     let op=baseOpacity[grp]??1;
-    if(sel!=='all')op=isSel?(grp==='skeleton'?.8:1):.12;
+    if(sel!=='all')op=isSel?(grp==='skeleton'?(sel==='musc'?.4:.8):1):.12;
     else if(anyVisits&&!hasVisits)op=Math.min(op,.35);
     if(hot)op=1;
-    mat.emissive.setHex(hot?0xff7a2f:0xe5391b);mat.emissiveIntensity=hot?.75:(isSel||(sel==='all'&&hasVisits)?.3:0);
+    mat.emissive.setHex(hot?0xff7a2f:0xe5391b);mat.emissiveIntensity=hot?.75:(grp!=='muscles'&&(isSel||(sel==='all'&&hasVisits))?.3:0);
     const wasTransparent=mat.transparent;mat.opacity=op;mat.transparent=op<1;mat.depthWrite=!mat.transparent;
     if(wasTransparent!==mat.transparent)mat.needsUpdate=true
   });
