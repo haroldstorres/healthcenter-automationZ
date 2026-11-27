@@ -151,7 +151,7 @@ function loadP(){
 onAuthStateChanged(auth,async u=>{
   if(setting)return;
   if(!u){U=null;lastClear();if(!KEEPD){try{Object.keys(sessionStorage).filter(k=>k.startsWith('rhuDraft')).forEach(k=>sessionStorage.removeItem(k))}catch(e){}}KEEPD=false;try{mode=(await getDoc(doc(db,'meta','setup'))).exists()?'login':'setup'}catch(e){mode='login'}return R()}
-  try{const d=await getDoc(doc(db,'users',u.uid));if(d.exists()&&d.data().active!==false){U={uid:u.uid,...d.data()};try{S=(await getDoc(doc(db,'meta','settings'))).data()||{}}catch(e){S={}}mode='app';pg='dash';msg='';t=Date.now();try{Object.keys(sessionStorage).filter(k=>k.startsWith('rhuDraft')&&!k.endsWith(':'+u.uid)).forEach(k=>sessionStorage.removeItem(k))}catch(e){}await loadP().catch(()=>{});setTimeout(()=>qSweep(),3000);{const dd=dGet();if(dd&&dd.open&&dd.day===today()&&CROLES.includes(U.role)&&P.find(x=>x.id===dd.cp)){cp=dd.cp;cq=dd.cq||null;pg='consult';RXL=[]}else{const dr=dRegGet();if(dr&&dr.day===today()&&canReg()){pg='reg';REGRESTORE=true}else{const fm=fmGet();if(fm&&fm.day===today()&&fm.pg){FMPEND=fm;setTimeout(fmResume,600)}else{const lb=labGet();if(lb&&lb.day===today()&&lb.v&&Object.keys(lb.v).length&&lbRolesOk()){pg='lab';setTimeout(()=>go('lab'),300)}}}}}}else mode='orphan'}catch(e){mode='orphan'}
+  try{const d=await getDoc(doc(db,'users',u.uid));if(d.exists()&&d.data().active!==false){U={uid:u.uid,...d.data()};try{S=(await getDoc(doc(db,'meta','settings'))).data()||{}}catch(e){S={}}mode='app';pg='dash';msg='';t=Date.now();try{const va=JSON.parse(sessionStorage.getItem('rhuViewAs')||'null');if(va&&va.uid===u.uid&&U.role==='developer'&&RN[va.role]&&va.role!=='developer'){U.real='developer';U.role=va.role}}catch(e){}try{Object.keys(sessionStorage).filter(k=>k.startsWith('rhuDraft')&&!k.endsWith(':'+u.uid)).forEach(k=>sessionStorage.removeItem(k))}catch(e){}await loadP().catch(()=>{});setTimeout(()=>qSweep(),3000);{const dd=dGet();if(dd&&dd.open&&dd.day===today()&&CROLES.includes(U.role)&&P.find(x=>x.id===dd.cp)){cp=dd.cp;cq=dd.cq||null;pg='consult';RXL=[]}else{const dr=dRegGet();if(dr&&dr.day===today()&&canReg()){pg='reg';REGRESTORE=true}else{const fm=fmGet();if(fm&&fm.day===today()&&fm.pg){FMPEND=fm;setTimeout(fmResume,600)}else{const lb=labGet();if(lb&&lb.day===today()&&lb.v&&Object.keys(lb.v).length&&lbRolesOk()){pg='lab';setTimeout(()=>go('lab'),300)}}}}}}else mode='orphan'}catch(e){mode='orphan'}
   R();lastRestore();
 });
 let PXN=0,PXU=null;
@@ -1810,7 +1810,7 @@ function dRegRestore(){
    Kept in this browser tab only. They survive a refresh and the automatic sign-out for inactivity (for the same user), and are erased on a normal sign-out. */
 /* remember the current page so a refresh lands back on it */
 function lastPut(k,id){if(!U||k==='reg'||k==='edit')return;try{sessionStorage.setItem('rhuLastPage',JSON.stringify({uid:U.uid,pg:k,pid:id||null}))}catch(e){}}
-function lastClear(){try{sessionStorage.removeItem('rhuLastPage')}catch(e){}}
+function lastClear(){try{sessionStorage.removeItem('rhuLastPage');sessionStorage.removeItem('rhuViewAs')}catch(e){}}
 function lastRestore(){
   let l=null;try{l=JSON.parse(sessionStorage.getItem('rhuLastPage')||'null')}catch(e){}
   if(!U||!l||l.uid!==U.uid||pg!=='dash'||l.pg==='dash')return;
@@ -2189,7 +2189,8 @@ async function dispense(id){
   const res=(r.items||[]).map(i=>({st:'given',given:Number(i.qty)||null,note:''}));
   await rxFinish(id,res)
 }
-const idleMin=()=>typeof S.idleMin==='number'?S.idleMin:10;
+const AUTO_SIGNOUT=false; // off for now
+const idleMin=()=>AUTO_SIGNOUT&&typeof S.idleMin==='number'?S.idleMin:0;
 const devCard=()=>{setTimeout(loadDevs,0);return `<div class="cd"><h3 style="margin-top:0">Developer accounts</h3><p style="color:var(--mu);margin-top:0;font-size:14px">Developers have full control of the system and its settings. Only add people you trust. You cannot remove your own account.</p><div id="dvl" class="ov">Loading...</div></div><div class="cd"><h3 style="margin-top:0">Add developer</h3><div class="fm"><div><label>Last name</label><input id="da1"></div><div><label>First name</label><input id="da2"></div><div><label>Middle name (optional)</label><input id="da3"></div><div><label>Email</label><input id="da4" type="email"></div><div><label>Temporary password (8+ characters)</label><input id="da5" type="text" autocomplete="off"></div></div><div class="er2" id="dae"></div><button class="bt" id="dab" style="margin-top:12px" onclick="addDev()">Create developer account</button></div>`};
 async function loadDevs(){
   const el=$('dvl');if(!el)return;
@@ -3116,7 +3117,9 @@ async function vxAdjSave(){
 function viewAs(r){
   if(!U.real)U.real=U.role;
   if(r===U.real){U.role=U.real;delete U.real}else U.role=r;
-  q='';cp=null;cq=null;vq=null;rqo=null;pg='dash';R();scrollTo(0,0)
+  q='';cp=null;cq=null;vq=null;rqo=null;pg='dash';
+  try{if(U.real)sessionStorage.setItem('rhuViewAs',JSON.stringify({uid:U.uid,role:U.role}));else sessionStorage.removeItem('rhuViewAs')}catch(e){}
+  lastPut('dash');R();scrollTo(0,0)
 }
 async function setActive(id,v){await updateDoc(doc(db,'users',id),{active:v});lg((v?'Activated ':'Deactivated ')+id);sDone(v?'The account was activated.':'The account was deactivated.',v?'Account activated':'Account deactivated');loadUsers()}
 async function addStaff(){
