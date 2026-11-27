@@ -1047,7 +1047,7 @@ const ICD_SYS=Object.fromEntries(ICD10.map(x=>[x[0],x[2]]));
 const DH_SYSTEMS=[['circ','Circulatory',/hypertens|\bbp\b|heart|cardi|angina|stroke/i],['resp','Respiratory',/cough|asthma|pneumon|\buri\b|\btb\b|tubercul|bronch|colds?\b|flu\b/i],['dige','Digestive',/gastr|diarrh|ulcer|abdominal|hepat|constipat|vomit/i],['endo','Endocrine',/diabet|thyroid|\bdm\b/i],['urin','Urinary',/\buti\b|urinary|kidney|renal/i],['nerv','Nervous',/headache|migraine|seizure|vertigo|neuro/i],['skel','Skeletal',/arthrit|back pain|sprain|fracture|bone|osteo|gout|joint/i],['musc','Muscular',/myalgia|muscle|cramp|strain/i],['inte','Integumentary',/skin|rash|dermat|wound|scabies|eczema|urticaria/i],['repr','Reproductive',/pregnan|prenatal|menstr|vagin|prostate/i],['infe','Infectious / General',/fever|dengue|dhf|covid|malaria|typhoid|measles|chickenpox|infection|viral|leptospir/i],['othr','Other',null]];
 const DH_SPOTS={nerv:[50,13],endo:[50,29],resp:[41,42],circ:[57,44],dige:[50,60],urin:[50,72],repr:[50,82],musc:[27,100],skel:[73,100],inte:[15,62]};
 let DH={sys:'all',yr:'all'};
-const dhSystemOf=v=>{if(v.icd&&v.icd[0]&&ICD_SYS[v.icd[0].code])return ICD_SYS[v.icd[0].code];const t=(v.dx||'')+' '+(v.cc||'');const m=DH_SYSTEMS.find(x=>x[2]&&x[2].test(t));return m?m[0]:'othr'};
+const dhSystemOf=v=>{if(v.icd&&v.icd[0]&&icdSysOf(v.icd[0].code))return icdSysOf(v.icd[0].code);const t=(v.dx||'')+' '+(v.cc||'');const m=DH_SYSTEMS.find(x=>x[2]&&x[2].test(t));return m?m[0]:'othr'};
 /* 3D body map (three.js + open-anatomy-3d models, loaded only when needed) */
 const DH3_KEYS={
   circ:['heart','aorta','coronary_arteries','vena_cava_inferior','vena_cava_superior','pulmonary_vessels','carotid_l','carotid_r','arteries_abdomen','arteries_thorax','arteries_head','arteries_arm_l','arteries_arm_r','arteries_leg_l','arteries_leg_r','arteries_pelvis','veins_abdomen','veins_thorax','veins_arm_l','veins_arm_r','veins_leg_l','veins_leg_r','veins_pelvis'],
@@ -1830,15 +1830,19 @@ function icdPaint(){
   const box=$('icdchips');if(!box)return;
   box.innerHTML=ICDSEL.list.map((c,i)=>`<span style="display:inline-flex;gap:6px;align-items:center;border:1px solid var(--bd,#ccc);border-radius:999px;padding:3px 10px;margin:0 6px 6px 0;font-size:13px"><b>${E(c.code)}</b> ${E(c.name)}${i===0?' <small style="color:var(--mu)">(primary)</small>':''}<button type="button" aria-label="Remove ${E(c.code)}" style="border:0;background:none;cursor:pointer;font-size:16px;line-height:1" onclick="icdRemove('${E(c.code)}')">&times;</button></span>`).join('')
 }
+const ICD_SYSKEYS=['circ','resp','dige','endo','urin','nerv','skel','musc','inte','repr','infe','othr'];
+const icdCustom=()=>Array.isArray(S.icdCustom)?S.icdCustom.filter(x=>x&&x.c&&x.n):[];
+const icdAll=()=>{const m=new Map(ICD10.map(x=>[x[0],x]));icdCustom().forEach(x=>m.set(x.c,[x.c,x.n,x.s||'othr']));return [...m.values()]};
+const icdSysOf=code=>{const c=icdCustom().find(x=>x.c===code);return (c&&c.s)||ICD_SYS[code]||null};
 function icdSearch(){
   const res=$('icdres'),q=($('icdq').value||'').trim().toLowerCase();if(!res)return;
   if(!q){res.innerHTML='';res.style.display='none';return}
-  const hits=ICD10.filter(x=>x[0].toLowerCase().startsWith(q)||x[1].toLowerCase().includes(q)).sort((a,b)=>(b[0].toLowerCase().startsWith(q)?1:0)-(a[0].toLowerCase().startsWith(q)?1:0)).slice(0,8);
+  const hits=icdAll().filter(x=>x[0].toLowerCase().startsWith(q)||x[1].toLowerCase().includes(q)).sort((a,b)=>(b[0].toLowerCase().startsWith(q)?1:0)-(a[0].toLowerCase().startsWith(q)?1:0)).slice(0,8);
   res.style.display='block';
-  res.innerHTML=hits.length?hits.map(x=>`<button type="button" class="bt g" style="display:block;width:100%;text-align:left;border-radius:0;margin:0" onclick="icdPick('${x[0]}')"><b>${x[0]}</b> ${E(x[1])}</button>`).join(''):'<div style="padding:8px;color:var(--mu)">No match in the starter list.</div>'
+  res.innerHTML=hits.length?hits.map(x=>`<button type="button" class="bt g" style="display:block;width:100%;text-align:left;border-radius:0;margin:0" onclick="icdPick('${x[0]}')"><b>${x[0]}</b> ${E(x[1])}</button>`).join(''):'<div style="padding:8px;color:var(--mu)">No match. Admins can add codes in Settings.</div>'
 }
 function icdPick(code){
-  const x=ICD10.find(i=>i[0]===code);if(!x)return;
+  const x=icdAll().find(i=>i[0]===code);if(!x)return;
   if(ICDSEL.list.length>=5||ICDSEL.list.some(c=>c.code===code))return;
   ICDSEL.list.push({code:x[0],name:x[1]});
   const q=$('icdq');if(q)q.value='';icdSearch();
@@ -2895,7 +2899,7 @@ function ntp(){
 }
 
 /* ---------- Settings page (admin and developer): clinic details and lists the health center can change without the developer ---------- */
-const SET_T=[['lh','Clinic details'],['pl','Barangays'],['rm','Rooms'],['snd','Sound'],['lab','Lab tests'],['rs','Visit reasons']];
+const SET_T=[['lh','Clinic details'],['pl','Barangays'],['rm','Rooms'],['snd','Sound'],['lab','Lab tests'],['rs','Visit reasons'],['icd','Diagnosis codes']];
 let setCur='lh';
 const RSDEF=['Check-up','Fever','Cough and colds','Prenatal check-up','Immunization','Dressing / wound care','Follow-up','Medical certificate'];
 const rsList=()=>Array.isArray(S.visitReasons)?S.visitReasons:RSDEF;
@@ -2909,8 +2913,17 @@ async function setReasons(){
   try{await setDoc(doc(db,'meta','settings'),{visitReasons:l,by:U.name,at:serverTimestamp()},{merge:true});S.visitReasons=l;await lg('Visit reasons updated ('+l.length+')');sDone('Visit reasons saved.')}
   catch(x){er.textContent=x.code==='permission-denied'?'You do not have permission. Publish the latest firestore.rules first.':'Could not save the list. Check your connection.'}
 }
+async function setIcdCustom(){
+  const er=$('icde'),seen=new Set(),l=[];
+  $('icdt').value.split('\n').forEach(r=>{const a=r.split('|').map(x=>x.trim()),c=(a[0]||'').toUpperCase().slice(0,10),n=(a[1]||'').slice(0,120),sy=(a[2]||'').toLowerCase();if(!c||!n||seen.has(c))return;seen.add(c);l.push({c,n,s:ICD_SYSKEYS.includes(sy)?sy:'othr'})});
+  er.textContent='';
+  if(l.length>300)return er.textContent='Maximum is 300 added codes.';
+  try{await setDoc(doc(db,'meta','settings'),{icdCustom:l,by:U.name,at:serverTimestamp()},{merge:true});S.icdCustom=l;await lg('Diagnosis codes updated ('+l.length+')');sDone('Diagnosis codes saved. They now appear in the consultation search.')}
+  catch(x){er.textContent=x.code==='permission-denied'?'You do not have permission. Publish the latest firestore.rules first.':'Could not save the list. Check your connection.'}
+}
+const icdCard=()=>`<div class="cd"><h3 style="margin-top:0">Diagnosis codes (ICD-10)</h3><p style="color:var(--mu);margin-top:0;font-size:14px">The built-in list has ${ICD10.length} common primary care diagnoses. Add more here, one per line, as <b>CODE | Name | system</b>. A code that is already built in is replaced by your version. System is optional: ${ICD_SYSKEYS.join(', ')} (default: othr).</p><textarea id="icdt" rows="10" placeholder="E11.9 | Type 2 diabetes mellitus without complications | endo">${E(icdCustom().map(x=>x.c+' | '+x.n+' | '+(x.s||'othr')).join('\n'))}</textarea><div class="er2" id="icde"></div><button class="bt" style="margin-top:10px" onclick="setIcdCustom()">Save codes</button></div>`;
 const setPg=()=>`<h2 style="margin-top:0">Settings</h2><p style="color:var(--mu);margin-top:-6px">Clinic details and lists that the health center can change without the developer. Permissions and roles stay with the developer.</p><div class="dt stt">${SET_T.map(([k,t])=>`<button class="bt${setCur===k?'':' g'}" data-t="${k}" onclick="setTab('${k}')">${t}</button>`).join('')}</div>`
-  +[['lh',lhCard],['pl',placesCard],['rm',roomsCard],['snd',soundCard],['lab',labTestsCard],['rs',reasonsCard]].map(([k,f])=>`<div class="stp" data-t="${k}" style="display:${setCur===k?'block':'none'}">${f()}</div>`).join('');
+  +[['lh',lhCard],['pl',placesCard],['rm',roomsCard],['snd',soundCard],['lab',labTestsCard],['rs',reasonsCard],['icd',icdCard]].map(([k,f])=>`<div class="stp" data-t="${k}" style="display:${setCur===k?'block':'none'}">${f()}</div>`).join('');
 
 /* ---------- Prenatal ---------- */
 // One document per pregnancy in "prenatal"; every prenatal visit is a document in "prenatalVisits".
@@ -3291,6 +3304,6 @@ document.addEventListener('change',e=>{
 });
 addEventListener('keydown',e=>{if(e.key==='Escape'&&DPS){dpClose();e.stopImmediatePropagation()}},true);
 addEventListener('resize',dpPlace);addEventListener('scroll',dpPlace,true);
-Object.assign(window,{dh3Hold,dh3Spin,icdSearch,icdPick,icdRemove,dh3SetDrag,dhSet,dh3Layer,dh3Zoom,dh3Reset,yakOpen,yakSave,fpeOpen,fpeSave,ntMute,ntToggle,ntGo,setTab,setReasons,RSDEF,invTab,invSetK,invSq,invSetT,invSetR,invQuick,invPrintStock,invCsvStock,invPrintRo,invCsvRo,invPrintHist,invCsvHist,invPrintSum,invCsvSum,callQ,oxOpen,oxPick,oxSave,setLabAttach,setLabRole,lbPick,lbRm,lbView,lbVX,stCall,stDone,stBack,snSync,phIn,rfSetF,rfSq,rfSet,rfRet,mcSetR,mcApply,mcSq,mcDoc,mcCsv,rxDspOpen,rxDspChg,rxDspGo,rxWarn,qNew,rxOpen,rxSave,vxIn,vxInSave,vxAdj,vaChg,vxAdjSave,fuQuick,fuDone,fuAll,fuSetF,fuSetT,fuSetB,fuSq,fuPrint,pnSetF,pnSetB,pnSq,pnPrint,pnPick,pnFind,pnForm,pnEdd,pnSave,pnVisit,pnNv,pnVisitSave,pnClose,pnCloseSave,pnBanner,rmRx,rpGo,rpPreset,rpPrint,rpCsv,ioFile,ioShow,ioRun,ioTemplate,ioExport,goBack,dmOpen,dmMed,dmClose,dmGo,stSearch,stFlt,siOpen,siClose,siSum,siSave,saOpen,saChg,saSave,slF,slCsv,ahOpen,ahSave,dxPer,dxPick,pSort,addDev,removeDev,plSum,dvTab,annDuChange,$,rows,go,out,doLogin,doSetup,view,save,addStaff,setActive,loadDemo,setPower,setIdle,viewAs,imSet,imGive,setLabTests,lbSave,setVitalsRole,setReasonRole,rOpen,rSave,qClose,backupAll,stNew,dispense,stSave,stAdd,fmClose,stFill,seClose,seSave,vOpen,vSave,removeUser,editP,saveEdit,delP,sq,openHH,addMember,qAdd,qAskV,qVGo,qVX,qAddP,qSearch,qCancel,startQ,startC,releaseQ,brChg,savePlaces,plRow,apApprove,apReject,saveRxApprove,setRxRole,editLic,lhPick,lhNoLogo,lhSave,printRx,certOpen,certGo,setAnnRole,setSound,postAnn,clearAnn,recallQ,setMyRoom,setRooms,cSearch,rmRx,saveC,cancelC});
+Object.assign(window,{setIcdCustom,dh3Hold,dh3Spin,icdSearch,icdPick,icdRemove,dh3SetDrag,dhSet,dh3Layer,dh3Zoom,dh3Reset,yakOpen,yakSave,fpeOpen,fpeSave,ntMute,ntToggle,ntGo,setTab,setReasons,RSDEF,invTab,invSetK,invSq,invSetT,invSetR,invQuick,invPrintStock,invCsvStock,invPrintRo,invCsvRo,invPrintHist,invCsvHist,invPrintSum,invCsvSum,callQ,oxOpen,oxPick,oxSave,setLabAttach,setLabRole,lbPick,lbRm,lbView,lbVX,stCall,stDone,stBack,snSync,phIn,rfSetF,rfSq,rfSet,rfRet,mcSetR,mcApply,mcSq,mcDoc,mcCsv,rxDspOpen,rxDspChg,rxDspGo,rxWarn,qNew,rxOpen,rxSave,vxIn,vxInSave,vxAdj,vaChg,vxAdjSave,fuQuick,fuDone,fuAll,fuSetF,fuSetT,fuSetB,fuSq,fuPrint,pnSetF,pnSetB,pnSq,pnPrint,pnPick,pnFind,pnForm,pnEdd,pnSave,pnVisit,pnNv,pnVisitSave,pnClose,pnCloseSave,pnBanner,rmRx,rpGo,rpPreset,rpPrint,rpCsv,ioFile,ioShow,ioRun,ioTemplate,ioExport,goBack,dmOpen,dmMed,dmClose,dmGo,stSearch,stFlt,siOpen,siClose,siSum,siSave,saOpen,saChg,saSave,slF,slCsv,ahOpen,ahSave,dxPer,dxPick,pSort,addDev,removeDev,plSum,dvTab,annDuChange,$,rows,go,out,doLogin,doSetup,view,save,addStaff,setActive,loadDemo,setPower,setIdle,viewAs,imSet,imGive,setLabTests,lbSave,setVitalsRole,setReasonRole,rOpen,rSave,qClose,backupAll,stNew,dispense,stSave,stAdd,fmClose,stFill,seClose,seSave,vOpen,vSave,removeUser,editP,saveEdit,delP,sq,openHH,addMember,qAdd,qAskV,qVGo,qVX,qAddP,qSearch,qCancel,startQ,startC,releaseQ,brChg,savePlaces,plRow,apApprove,apReject,saveRxApprove,setRxRole,editLic,lhPick,lhNoLogo,lhSave,printRx,certOpen,certGo,setAnnRole,setSound,postAnn,clearAnn,recallQ,setMyRoom,setRooms,cSearch,rmRx,saveC,cancelC});
 ['stAdd','siOpen','pnVisit','pnForm','vxIn'].forEach(fmWrap);
 </script></body></html>
