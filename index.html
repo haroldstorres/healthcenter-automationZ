@@ -802,6 +802,17 @@ function rpCalc(){
   if(D.rx){
     const md={};D.rx.filter(r=>r.status!=='rejected').forEach(r=>(r.items||[]).forEach(i=>{const k=String(i.drug||'').trim().toLowerCase();if(!k)return;const x=md[k]=md[k]||{n:String(i.drug).trim(),c:0,q:0};x.c++;const q=Number(i.qty);if(q>0)x.q+=q}));
     c.med=Object.values(md).sort((x,y)=>y.c-x.c||x.n.localeCompare(y.n))
+    // Dispensed vs prescribed: quantity actually given, per medicine, plus prescription status counts and who dispensed.
+    const dm={},ds={dispensed:0,partial:0,pending:0,awaiting:0},db_={};
+    D.rx.filter(r=>r.status!=='rejected').forEach(r=>{
+      if(ds[r.status]!==undefined)ds[r.status]++;
+      if(r.dispensedBy&&(r.status==='dispensed'||r.status==='partial'))db_[r.dispensedBy]=(db_[r.dispensedBy]||0)+1;
+      if(r.status!=='dispensed'&&r.status!=='partial')return;
+      (r.items||[]).forEach((i,k)=>{const nm=String(i.drug||'').trim();if(!nm)return;const key=nm.toLowerCase(),x=dm[key]=dm[key]||{n:nm,rq:0,gv:0,nf:0},res=(r.results||[])[k]||{},q=Number(i.qty)||0;
+        const g=res.st==='given'?(res.given!=null?Number(res.given)||0:q):(Number(res.given)||0);
+        x.rq+=q;x.gv+=g;if(res.st&&res.st!=='given')x.nf++})
+    });
+    c.dsp=Object.values(dm).sort((x,y)=>y.gv-x.gv||x.n.localeCompare(y.n));c.dss=ds;c.dsb=Object.entries(db_).sort((x,y)=>y[1]-x[1])
   }
   return c
 }
@@ -816,6 +827,7 @@ function rpSections(){
   S.push(['Consultations by barangay',D.vs===null?'':rpTab(['Barangay','Consultations'],c.brg.slice(0,15),'No consultations in this period.')]);
   S.push(['Immunization',D.im===null?'<p class="er2">Could not load immunization records.</p>':rpTab(['Vaccine','Doses given'],c.vx.concat(c.vxN?[['Total',c.vxN]]:[]),'No vaccines recorded in this period.')]);
   S.push(['Medicines prescribed',D.rx===null?'<p style="color:var(--mu)">Prescriptions can be read by doctor and midwife accounts only.</p>':rpTab(['Medicine','Times prescribed','Total quantity'],c.med.slice(0,20).map(x=>[x.n,x.c,x.q||'-']),'No prescriptions in this period.')+'<p style="color:var(--mu);font-size:13px;margin:6px 0 0">Prescribed, not dispensed. Rejected prescriptions are not counted.</p>']);
+  if(D.rx){const ds=c.dss;S.push(['Medicines dispensed',`<p style="margin:0 0 8px"><b>Prescriptions:</b> ${ds.dispensed} fully dispensed, ${ds.partial} partly or not available, ${ds.pending+ds.awaiting} not yet dispensed.</p>`+rpTab(['Medicine','Quantity prescribed','Quantity given','Times not fully given'],c.dsp.slice(0,30).map(x=>[x.n,x.rq||'-',x.gv,x.nf]),'No prescriptions were dispensed in this period.')+(c.dsb.length?'<p style="margin:10px 0 4px"><b>Dispensed by</b></p>'+rpTab(['Pharmacist / staff','Prescriptions'],c.dsb,''):'')+'<p style="color:var(--mu);font-size:13px;margin:6px 0 0">Counts only prescriptions whose date is in this period and that the pharmacy has already processed. Quantity given comes from what the pharmacist recorded.</p>'])}
   return S
 }
 function rpRender(){
@@ -842,6 +854,7 @@ function rpCsv(){
   r.push([],['Referrals by destination'],['Referred to','Referrals']);c.rfd.forEach(x=>r.push(x));
   if(D.im){r.push([],['Immunization'],['Vaccine','Doses given']);c.vx.forEach(x=>r.push(x))}
   if(D.rx){r.push([],['Medicines prescribed'],['Medicine','Times prescribed','Total quantity']);c.med.forEach(x=>r.push([x.n,x.c,x.q||'']))}
+  if(D.rx){r.push([],['Medicines dispensed'],['Fully dispensed',c.dss.dispensed,'Partly or not available',c.dss.partial,'Not yet dispensed',c.dss.pending+c.dss.awaiting],['Medicine','Quantity prescribed','Quantity given','Times not fully given']);c.dsp.forEach(x=>r.push([x.n,x.rq||'',x.gv,x.nf]));if(c.dsb.length){r.push([],['Dispensed by','Prescriptions']);c.dsb.forEach(x=>r.push(x))}}
   ioDl('report-'+RP.from+'-to-'+RP.to+'.csv',r);lg('Downloaded report CSV '+RP.from+' to '+RP.to)
 }
 /* ---------- Import / Export (patients, CSV) ---------- */
