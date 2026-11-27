@@ -502,6 +502,11 @@ function dxClassify(t){
   const c=t.split('\n')[0].replace(/[.;,\s]+$/,'').trim().slice(0,40);if(!c)return[];
   return[[c.charAt(0).toUpperCase()+c.slice(1),0]]
 }
+// Use the saved ICD-10 diagnoses when a visit has them; same names as the free-text list so old and new visits count together.
+function dxClassifyV(v){
+  if(v&&v.icd&&v.icd.length){const seen=new Set(),o=[];v.icd.forEach(c=>{const h=DXT.find(x=>x[1].test(String(c.name||'').toLowerCase())),r=h?[h[0],h[2]]:[(c.code?c.code+' ':'')+(c.name||''),0];if(!seen.has(r[0])){seen.add(r[0]);o.push(r)}});return o}
+  return dxClassify(v&&v.dx)
+}
 const ageAt=(dob,d)=>{const b=new Date(dob),n=new Date(d);let a=n.getFullYear()-b.getFullYear();if(n<new Date(n.getFullYear(),b.getMonth(),b.getDate()))a--;return a};
 let VXD=[],dxSel=null,dxDays=30,DXR=[],DXB='';
 const dstr=n=>{const x=new Date();x.setDate(x.getDate()-n);return x.toLocaleDateString('en-CA')};
@@ -509,7 +514,7 @@ const dxCard=()=>{setTimeout(loadDx,0);return `<div id="dxs"><div class="cd">Loa
 async function loadDx(){
   const el=$('dxs');if(!el)return;
   try{const s=await getDocs(query(collection(db,'visits'),where('d','>=',dstr(125)))),pm=new Map(P.map(p=>[p.id,p]));
-    VXD=s.docs.map(x=>{const v=x.data(),p=pm.get(v.pid);return{d:v.d,age:p?ageAt(p.dob,v.d):null,br:p?p.br:'',k:dxClassify(v.dx)}});
+    VXD=s.docs.map(x=>{const v=x.data(),p=pm.get(v.pid);return{d:v.d,age:p?ageAt(p.dob,v.d):null,br:p?p.br:'',k:dxClassifyV(v)}});
     dxRender()}
   catch(e){el.innerHTML='<div class="cd">'+(e.code==='permission-denied'?'Could not load diagnoses. Publish the latest firestore.rules first.':'Could not load diagnoses. Check your connection.')+'</div>'}
 }
@@ -764,7 +769,7 @@ function rpCalc(){
   const m={},b={};
   vs.forEach(v=>{
     const p=pm.get(v.pid),a=p&&p.dob?ageAt(p.dob,v.d):null,br=(p&&p.br)||'Unknown';b[br]=(b[br]||0)+1;
-    dxClassify(v.dx).forEach(([n])=>{const r=m[n]=m[n]||{n,t:0,M:0,F:0,u5:0,c:0,a:0,s:0,na:0};r.t++;if(p&&p.sex==='M')r.M++;else if(p&&p.sex==='F')r.F++;if(a===null)r.na++;else if(a<5)r.u5++;else if(a<18)r.c++;else if(a<60)r.a++;else r.s++})
+    dxClassifyV(v).forEach(([n])=>{const r=m[n]=m[n]||{n,t:0,M:0,F:0,u5:0,c:0,a:0,s:0,na:0};r.t++;if(p&&p.sex==='M')r.M++;else if(p&&p.sex==='F')r.F++;if(a===null)r.na++;else if(a<5)r.u5++;else if(a<18)r.c++;else if(a<60)r.a++;else r.s++})
   });
   c.morb=Object.values(m).sort((x,y)=>y.t-x.t||x.n.localeCompare(y.n));
   c.brg=Object.entries(b).sort((x,y)=>y[1]-x[1]);
