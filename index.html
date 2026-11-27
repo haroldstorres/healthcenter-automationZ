@@ -1048,38 +1048,49 @@ const DH_SYSTEMS=[['circ','Circulatory',/hypertens|\bbp\b|heart|cardi|angina|str
 const DH_SPOTS={nerv:[50,13],endo:[50,29],resp:[41,42],circ:[57,44],dige:[50,60],urin:[50,72],repr:[50,82],musc:[27,100],skel:[73,100],inte:[15,62]};
 let DH={sys:'all',yr:'all'};
 const dhSystemOf=v=>{if(v.icd&&v.icd[0]&&icdSysOf(v.icd[0].code))return icdSysOf(v.icd[0].code);const t=(v.dx||'')+' '+(v.cc||'');const m=DH_SYSTEMS.find(x=>x[2]&&x[2].test(t));return m?m[0]:'othr'};
-/* 3D body map (three.js + open-anatomy-3d models, loaded only when needed) */
-const DH3_KEYS={
-  circ:['heart','aorta','coronary_arteries','vena_cava_inferior','vena_cava_superior','pulmonary_vessels','carotid_l','carotid_r','arteries_abdomen','arteries_thorax','arteries_head','arteries_arm_l','arteries_arm_r','arteries_leg_l','arteries_leg_r','arteries_pelvis','veins_abdomen','veins_thorax','veins_arm_l','veins_arm_r','veins_leg_l','veins_leg_r','veins_pelvis'],
-  resp:['lung_l','lung_r','bronchi','trachea','larynx','pharynx','diaphragm'],
-  dige:['stomach','liver','gallbladder','pancreas','small_intestine','colon','esophagus','appendix','spleen'],
-  endo:['pituitary','adrenal_l','adrenal_r','thymus'],
-  urin:['kidney_l','kidney_r','ureter_l','ureter_r','bladder'],
-  nerv:['brain','brainstem','cerebellum','cranial_nerves','spinal_cord'],
-  inte:['skin'],
-  repr:['reproductive','ovary_l','ovary_r','uterus','fallopian_tubes','vagina','prostate','breast_l','breast_r']
-};
-const DH3_SYS_OF={};Object.entries(DH3_KEYS).forEach(([sys,ks])=>ks.forEach(k=>{DH3_SYS_OF[k]=sys}));
-const DH3_COLORS={"abdominal_muscles":"b5463d","back_muscles_l":"b5463d","back_muscles_r":"b5463d","calf_l":"b5463d","calf_r":"b5463d","chest_muscles_l":"b5463d","chest_muscles_r":"b5463d","deltoid_l":"b5463d","deltoid_r":"b5463d","diaphragm":"b85a4a","foot_muscles_l":"b5463d","foot_muscles_r":"b5463d","forearm_muscles_l":"b5463d","forearm_muscles_r":"b5463d","gluteal_l":"b5463d","gluteal_r":"b5463d","hamstrings_l":"b5463d","hamstrings_r":"b5463d","hand_muscles_l":"b5463d","hand_muscles_r":"b5463d","iliopsoas_l":"b5463d","iliopsoas_r":"b5463d","adductors_l":"b5463d","adductors_r":"b5463d","intercostals_l":"b5463d","intercostals_r":"b5463d","neck_muscles_l":"b5463d","neck_muscles_r":"b5463d","pelvic_floor":"b5463d","quadriceps_l":"b5463d","quadriceps_r":"b5463d","rotator_cuff_l":"b5463d","rotator_cuff_r":"b5463d","shin_muscles_l":"b5463d","shin_muscles_r":"b5463d","shoulder_muscles_l":"b5463d","shoulder_muscles_r":"b5463d","trapezius_l":"b5463d","trapezius_r":"b5463d","upper_arm_muscles_l":"b5463d","upper_arm_muscles_r":"b5463d","cranial_nerves":"f2c14e","spinal_cord":"f2d27a","adrenal_l":"e0c068","adrenal_r":"e0c068","appendix":"c9847a","brain":"e4aaa6","brainstem":"cf8f8f","breast_l":"f0a8a0","breast_r":"f0a8a0","bronchi":"e3b7ad","cerebellum":"d99a9a","esophagus":"c98a7a","eye_l":"f4f1ea","eye_r":"f4f1ea","fallopian_tubes":"d98a8f","gallbladder":"6b8e5a","heart":"b8352c","kidney_l":"8a3f35","kidney_r":"8a3f35","colon":"c07a64","larynx":"d8b8a6","liver":"8a4a2e","lung_l":"e8a5a0","lung_r":"e8a5a0","reproductive":"d6a08c","ovary_l":"e8b36a","ovary_r":"e8b36a","pancreas":"e2c08d","pharynx":"c98a7a","pituitary":"e0a050","prostate":"c98f86","salivary_glands":"e3c7a0","small_intestine":"d99a88","spleen":"7a3f4a","stomach":"d49383","thymus":"e8c3b5","tongue":"cf7d7d","trachea":"d7a9a0","ureter_l":"b07a70","ureter_r":"b07a70","bladder":"d9a36a","uterus":"d9737a","vagina":"cf8a86","spine_cervical":"efe6d2","clavicle_l":"efe6d2","clavicle_r":"efe6d2","foot_l":"efe6d2","foot_r":"efe6d2","forearm_l":"efe6d2","forearm_r":"efe6d2","hand_l":"efe6d2","hand_r":"efe6d2","mandible":"efe6d2","patella_l":"efe6d2","patella_r":"efe6d2","spine_lumbar":"efe6d2","pelvis":"efe6d2","ribs_l":"efe6d2","ribs_r":"efe6d2","lower_leg_l":"efe6d2","lower_leg_r":"efe6d2","scapula_l":"efe6d2","scapula_r":"efe6d2","skull":"efe6d2","sternum":"efe6d2","teeth":"fbf8ef","femur_l":"efe6d2","femur_r":"efe6d2","spine_thoracic":"efe6d2","humerus_l":"efe6d2","humerus_r":"efe6d2","skin":"e9b596","aorta":"c0392b","arteries_abdomen":"c0392b","arteries_thorax":"c0392b","arteries_head":"c0392b","arteries_arm_l":"c0392b","arteries_leg_l":"c0392b","arteries_pelvis":"c0392b","arteries_arm_r":"c0392b","arteries_leg_r":"c0392b","carotid_l":"c0392b","carotid_r":"c0392b","coronary_arteries":"d6452f","vena_cava_inferior":"2e6db4","pulmonary_vessels":"8e4bb0","vena_cava_superior":"2e6db4","veins_abdomen":"2e6db4","veins_thorax":"2e6db4","veins_arm_l":"2e6db4","veins_leg_l":"2e6db4","veins_pelvis":"2e6db4","veins_arm_r":"2e6db4","veins_leg_r":"2e6db4"};
-const DH3_LABELS={"abdominal_muscles":"Abdominal Wall Muscles","back_muscles_l":"Back Muscles (L)","back_muscles_r":"Back Muscles (R)","calf_l":"Calf Muscles (L)","calf_r":"Calf Muscles (R)","chest_muscles_l":"Chest (Pectoral) Muscle (L)","chest_muscles_r":"Chest (Pectoral) Muscle (R)","deltoid_l":"Deltoid (Shoulder) (L)","deltoid_r":"Deltoid (Shoulder) (R)","diaphragm":"Diaphragm","foot_muscles_l":"Foot Muscles (L)","foot_muscles_r":"Foot Muscles (R)","forearm_muscles_l":"Forearm Muscles (L)","forearm_muscles_r":"Forearm Muscles (R)","gluteal_l":"Gluteal Muscles (L)","gluteal_r":"Gluteal Muscles (R)","hamstrings_l":"Hamstrings (Back Thigh) (L)","hamstrings_r":"Hamstrings (Back Thigh) (R)","hand_muscles_l":"Hand Muscles (L)","hand_muscles_r":"Hand Muscles (R)","iliopsoas_l":"Hip Flexor (Iliopsoas) (L)","iliopsoas_r":"Hip Flexor (Iliopsoas) (R)","adductors_l":"Inner Thigh (Adductors) (L)","adductors_r":"Inner Thigh (Adductors) (R)","intercostals_l":"Intercostal Muscles (L)","intercostals_r":"Intercostal Muscles (R)","neck_muscles_l":"Neck Muscles (L)","neck_muscles_r":"Neck Muscles (R)","pelvic_floor":"Pelvic Floor","quadriceps_l":"Quadriceps (Front Thigh) (L)","quadriceps_r":"Quadriceps (Front Thigh) (R)","rotator_cuff_l":"Rotator Cuff (L)","rotator_cuff_r":"Rotator Cuff (R)","shin_muscles_l":"Shin Muscles (L)","shin_muscles_r":"Shin Muscles (R)","shoulder_muscles_l":"Shoulder Girdle Muscles (L)","shoulder_muscles_r":"Shoulder Girdle Muscles (R)","trapezius_l":"Trapezius (L)","trapezius_r":"Trapezius (R)","upper_arm_muscles_l":"Upper Arm Muscles (L)","upper_arm_muscles_r":"Upper Arm Muscles (R)","cranial_nerves":"Cranial & Eye Nerves","spinal_cord":"Spinal Cord","adrenal_l":"Adrenal Gland (L)","adrenal_r":"Adrenal Gland (R)","appendix":"Appendix","brain":"Brain","brainstem":"Brainstem","breast_l":"Breast (L)","breast_r":"Breast (R)","bronchi":"Bronchi","cerebellum":"Cerebellum","esophagus":"Esophagus","eye_l":"Eye (L)","eye_r":"Eye (R)","fallopian_tubes":"Fallopian Tubes","gallbladder":"Gallbladder & Bile Ducts","heart":"Heart","kidney_l":"Kidney (L)","kidney_r":"Kidney (R)","colon":"Large Intestine (Colon)","larynx":"Larynx (Voice Box)","liver":"Liver","lung_l":"Lung (L)","lung_r":"Lung (R)","reproductive":"Male Reproductive Organs","ovary_l":"Ovary (L)","ovary_r":"Ovary (R)","pancreas":"Pancreas","pharynx":"Pharynx (Throat)","pituitary":"Pituitary Gland","prostate":"Prostate","salivary_glands":"Salivary Glands","small_intestine":"Small Intestine","spleen":"Spleen","stomach":"Stomach","thymus":"Thymus","tongue":"Tongue","trachea":"Trachea","ureter_l":"Ureter (L)","ureter_r":"Ureter (R)","bladder":"Urinary Bladder","uterus":"Uterus","vagina":"Vagina","spine_cervical":"Cervical Spine (Neck)","clavicle_l":"Collarbone (L)","clavicle_r":"Collarbone (R)","foot_l":"Foot (L)","foot_r":"Foot (R)","forearm_l":"Forearm Bones (L)","forearm_r":"Forearm Bones (R)","hand_l":"Hand (L)","hand_r":"Hand (R)","mandible":"Jaw (Mandible)","patella_l":"Kneecap (L)","patella_r":"Kneecap (R)","spine_lumbar":"Lumbar Spine (Lower Back)","pelvis":"Pelvis & Sacrum","ribs_l":"Ribs (L)","ribs_r":"Ribs (R)","lower_leg_l":"Shin Bones (L)","lower_leg_r":"Shin Bones (R)","scapula_l":"Shoulder Blade (L)","scapula_r":"Shoulder Blade (R)","skull":"Skull","sternum":"Sternum","teeth":"Teeth & Gums","femur_l":"Thigh Bone (Femur) (L)","femur_r":"Thigh Bone (Femur) (R)","spine_thoracic":"Thoracic Spine","humerus_l":"Upper Arm Bone (L)","humerus_r":"Upper Arm Bone (R)","skin":"Skin","aorta":"Aorta","arteries_abdomen":"Arteries — Abdomen","arteries_thorax":"Arteries — Chest","arteries_head":"Arteries — Head & Neck","arteries_arm_l":"Arteries — Left Arm","arteries_leg_l":"Arteries — Left Leg","arteries_pelvis":"Arteries — Pelvis","arteries_arm_r":"Arteries — Right Arm","arteries_leg_r":"Arteries — Right Leg","carotid_l":"Carotid Artery (L)","carotid_r":"Carotid Artery (R)","coronary_arteries":"Coronary Arteries","vena_cava_inferior":"Inferior Vena Cava","pulmonary_vessels":"Pulmonary Vessels","vena_cava_superior":"Superior Vena Cava","veins_abdomen":"Veins — Abdomen","veins_thorax":"Veins — Chest","veins_arm_l":"Veins — Left Arm","veins_leg_l":"Veins — Left Leg","veins_pelvis":"Veins — Pelvis","veins_arm_r":"Veins — Right Arm","veins_leg_r":"Veins — Right Leg"};
-// lungs are very pale in the catalog, so they vanish on a white background
-const DH3_COLOR_FIX={lung_l:'dc7f8a',lung_r:'dc7f8a',bronchi:'cf8a86',trachea:'c98d86'};
-const DH3_HEAD=new Set(['eye_l','eye_r','tongue','salivary_glands']);
-const DH3_MODEL_URLS=f=>[new URL('models/'+f,document.baseURI).href,'https://cdn.jsdelivr.net/npm/open-anatomy-3d@0.1.0/models/'+f];
+/* 3D body map (three.js, layered BodyParts3D models, loaded only when needed) */
+const DH3_LAYER_FILES={skin:'skin.glb',organs:'organs.glb',skeleton:'skeleton.glb',vessels:'vessels.glb',nerves:'nerves.glb',muscles:'muscles.glb'};
+const DH3_CORE_LAYERS=['skin','organs','skeleton'];
+const DH3_LATER_LAYERS=['vessels','nerves'];
+const DH3_MODEL_URL=f=>new URL('models/'+f,document.baseURI).href;
+const DH3_COLORS={muscle:'b5463d',tendon:'e0cfae',bone:'efe6d2',cartilage:'d9e0dc',ligament:'e6dcc8',tooth:'fbf8ef',artery:'c0392b',vein:'2e6db4',arteryDeoxy:'8e4bb0',veinOxy:'8e4bb0',brain:'e4aaa6',csf:'a9c7e0',dura:'d8c9a0',cord:'f2d27a',nerve:'f2c14e',heart:'b8352c',lung:'dc7f8a',airway:'cf8a86',stomach:'d49383',intestine:'d99a88',colon:'c07a64',liver:'8a4a2e',gallbladder:'6b8e5a',pancreas:'e2c08d',spleen:'7a3f4a',kidney:'8a3f35',bladder:'d9a36a',tongue:'cf7d7d',mesentery:'e3c7a0',gland:'e0c068',reproductive:'d6a08c',eye:'f4f1ea',cornea:'eaf2f6',iris:'7a5c3a',pupil:'1b1b1b'};
+const DH3_ORGAN_LABELS={heart:'Heart',stomach:'Stomach & esophagus',intestine:'Small intestine',colon:'Large intestine',liver:'Liver',gallbladder:'Gallbladder & bile ducts',pancreas:'Pancreas',spleen:'Spleen',bladder:'Urinary bladder & urethra',tongue:'Tongue & gums',mesentery:'Mesentery',trachea:'Trachea',bronchi:'Bronchi',larynx:'Larynx',brain:'Brain'};
+// only these layers react to hover
+const DH3_HOVER_GROUPS=new Set(['organs','muscles','skeleton']);
 let DH3={st:'idle',sex:'',cache:{},el:null,layers:{skin:true,muscles:false,skeleton:true,organs:true,vessels:true,nerves:true},hoverKey:null,lastMove:0};
 const dh3SexOf=p=>p&&p.sex==='F'?'female':'male';
-function dh3KeyOf(m){
-  let n=m.name;
-  if(!(n in DH3_COLORS)&&m.parent&&m.parent.name&&(m.parent.name in DH3_COLORS))n=m.parent.name;
-  return n.replace(/_\d+$/,'')
+function dh3ColorOf(name,e){
+  if(/mammary|lactiferous/i.test(name))return 'f0a8a0';
+  if(e.mat==='reproductive'&&/uter|ovar|fallopian|vagina/i.test(name))return 'd9737a';
+  return DH3_COLORS[e.mat]||'cfd6d6'
 }
-function dh3SystemOfMesh(m){
-  let n=m.name;
-  if(!(n in DH3_SYS_OF)&&m.parent&&m.parent.name&&(m.parent.name in DH3_SYS_OF))n=m.parent.name;
-  n=n.replace(/_\d+$/,'');
-  if(n in DH3_SYS_OF)return DH3_SYS_OF[n];
-  const grp=m.parent&&m.parent.name;
-  return grp==='muscles'?'musc':grp==='skeleton'?'skel':null
+// work out body system, hover key and label for one part
+function dh3PartInfo(name,e){
+  const cap=s=>s?s[0].toUpperCase()+s.slice(1)+' ':'';
+  const info={sys:null,key:e.fj,label:name,head:false};
+  const pick=(key,label)=>{info.key=key;info.label=label};
+  if(e.layer==='skin'){info.sys='inte';return info}
+  if(e.layer==='vessels'){info.sys='circ';return info}
+  if(e.layer==='skeleton'){info.sys='skel';return info}
+  if(e.layer==='muscles'){info.sys=e.group==='diaphragm'?'resp':'musc';return info}
+  if(e.layer==='nerves'){info.sys='nerv';if(e.cat==='brain')pick('brain',DH3_ORGAN_LABELS.brain);return info}
+  if(e.group==='reproductive'||e.mat==='reproductive'){info.sys='repr';return info}
+  switch(e.mat){
+    case 'heart':info.sys='circ';pick('heart',DH3_ORGAN_LABELS.heart);break;
+    case 'lung':info.sys='resp';pick('lung'+e.side,cap(e.side)+'lung');break;
+    case 'airway':{info.sys='resp';const k=/trachea/i.test(name)?'trachea':/bronch/i.test(name)?'bronchi':'larynx';pick(k,DH3_ORGAN_LABELS[k]);break}
+    case 'stomach':case 'intestine':case 'colon':case 'liver':case 'gallbladder':case 'pancreas':case 'spleen':case 'mesentery':case 'tongue':
+      info.sys='dige';pick(e.mat,DH3_ORGAN_LABELS[e.mat]);break;
+    case 'kidney':info.sys='urin';pick('kidney'+e.side,cap(e.side)+'kidney & ureter');break;
+    case 'bladder':info.sys='urin';pick('bladder',DH3_ORGAN_LABELS.bladder);break;
+    case 'gland':
+      if(/adrenal|thymus|pituitary/i.test(name))info.sys='endo';
+      else if(/sublingual|submandibular/i.test(name))info.sys='dige';
+      break;
+    case 'eye':case 'cornea':case 'iris':case 'pupil':pick('eye'+e.side,cap(e.side)+'eye');break;
+  }
+  info.head=['tongue','eye','cornea','iris','pupil'].includes(e.mat)||/sublingual|submandibular/i.test(name);
+  return info
 }
 async function dh3Load(sex){
   DH3.st='loading';DH3.sex=sex;
@@ -1087,7 +1098,6 @@ async function dh3Load(sex){
     const THREE=await import('three');
     const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
     const {OrbitControls}=await import('three/addons/controls/OrbitControls.js');
-    const {MeshoptDecoder}=await import('three/addons/libs/meshopt_decoder.module.js');
     if(!DH3.renderer){
       const el=document.createElement('div');el.style.cssText='width:100%;height:100%;touch-action:none';
       const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
@@ -1107,37 +1117,53 @@ async function dh3Load(sex){
       renderer.domElement.addEventListener('pointerleave',()=>dh3SetHover(null,''));
       new ResizeObserver(()=>dh3Resize()).observe(el);
       setTimeout(dh3DragMode,0);
-      Object.assign(DH3,{dragMode:'rotate',THREE,GLTFLoader,MeshoptDecoder,renderer,scene,camera,controls,render,el,ray:new THREE.Raycaster()});
+      Object.assign(DH3,{dragMode:'rotate',THREE,GLTFLoader,renderer,scene,camera,controls,render,el,ray:new THREE.Raycaster()});
     }
-    if(!DH3.cache[sex]){
-      const loader=new DH3.GLTFLoader();loader.setMeshoptDecoder(DH3.MeshoptDecoder);
-      let gltf=null;
-      for(const u of DH3_MODEL_URLS('anatomy-'+sex+'.glb')){try{gltf=await loader.loadAsync(u);break}catch(e){}}
-      if(!gltf)throw new Error('model not found');
-      const root=gltf.scene;
-      const skinMat=dh3SkinMaterial(),rough={skeleton:.7,muscles:.6,organs:.45,vessels:.35,nerves:.5};
-      root.userData.skinMat=skinMat;
-      root.traverse(m=>{
-        if(!m.isMesh)return;
-        let top=m;while(top.parent&&top.parent!==root)top=top.parent;
-        m.userData.grp=top.name;m.userData.sys=dh3SystemOfMesh(m);
-        if(top.name==='skin'){m.userData.sys='inte';m.material=skinMat;m.renderOrder=10;m.raycast=()=>{};return}
-        const colorKey=dh3KeyOf(m);
-        let base=parseInt(DH3_COLOR_FIX[colorKey]||DH3_COLORS[colorKey]||'cfd6d6',16);
-        if(top.name==='muscles'){
-          // each muscle gets a slightly different shade so they read as separate muscles
-          let hash=0;for(const ch of colorKey)hash=(hash*31+ch.charCodeAt(0))%997;
-          base=new DH3.THREE.Color(0xca6350).offsetHSL(0,0,((hash%17)-8)/130).getHex()
-        }
-        m.userData.base=base;
-        m.material=new DH3.THREE.MeshStandardMaterial({color:base,roughness:rough[top.name]||.5,metalness:0});
-        if(top.name==='muscles')dh3AddFibres(m.material)
-      });
-      DH3.scene.add(root);DH3.cache[sex]=root
+    if(!DH3.body){
+      // one shared body for both sexes, sex-only parts are hidden in dh3Apply
+      const root=new THREE.Group();root.userData.skinMat=dh3SkinMaterial();
+      DH3.scene.add(root);DH3.body=root;DH3.loader=new GLTFLoader();DH3.layerState={}
     }
+    const first=await Promise.allSettled(DH3_CORE_LAYERS.map(l=>dh3LoadLayer(l)));
+    if(first.every(r=>r.status==='rejected'||!r.value))throw new Error('model not found');
+    DH3.cache.male=DH3.cache.female=DH3.body;
     DH3.st='ready';
+    DH3_LATER_LAYERS.forEach(l=>dh3LoadLayer(l))
   }catch(e){DH3.st='fail';console.warn('3D body map failed',e)}
   dhPaint()
+}
+// load one layer file once, later calls reuse the same promise
+function dh3LoadLayer(layer){
+  if(DH3.layerState[layer])return DH3.layerState[layer];
+  DH3.layerState[layer]=(async()=>{
+    const gltf=await DH3.loader.loadAsync(DH3_MODEL_URL(DH3_LAYER_FILES[layer]));
+    const rough={skeleton:.7,muscles:.6,organs:.45,vessels:.35,nerves:.5};
+    const meshes=[];gltf.scene.traverse(m=>{if(m.isMesh)meshes.push(m)});
+    meshes.forEach(m=>{
+      const e=m.userData,name=e.name||m.name.replace(/_/g,' '),info=dh3PartInfo(name,e);
+      Object.assign(m.userData,{grp:e.cat==='brain'?'organs':layer,sys:info.sys,key:info.key,label:info.label,head:info.head,sex:e.sex||''});
+      if(layer==='skin'){
+        // only skin and ear get the see-through shader, hair and lips stay hidden
+        if(e.mat==='skin'){m.material=DH3.body.userData.skinMat;m.renderOrder=10;m.raycast=()=>{}}
+        else{m.userData.hidden=true;m.visible=false}
+        return
+      }
+      let base=parseInt(dh3ColorOf(name,e),16);
+      const fibres=layer==='muscles'&&e.mat==='muscle';
+      if(fibres){
+        // slightly different shade per muscle so they read as separate muscles
+        let hash=0;for(const ch of name)hash=(hash*31+ch.charCodeAt(0))%997;
+        base=new DH3.THREE.Color(0xca6350).offsetHSL(0,0,((hash%17)-8)/130).getHex()
+      }
+      m.userData.base=base;
+      m.material=new DH3.THREE.MeshStandardMaterial({color:base,roughness:rough[layer]||.5,metalness:0});
+      if(fibres)dh3AddFibres(m.material)
+    });
+    [...gltf.scene.children].forEach(c=>DH3.body.add(c));
+    if(DH3.st==='ready'&&DH3.last)dh3Apply(...DH3.last);
+    return true
+  })().catch(err=>{console.warn('3D layer failed: '+layer,err);return null});
+  return DH3.layerState[layer]
 }
 function dh3AddFibres(mat){
   // fine stripes in world space to fake muscle fibres
@@ -1173,8 +1199,8 @@ function dh3Resize(){
 }
 function dh3Apply(sex,counts,sel){
   const T=DH3.THREE;DH3.last=[sex,counts,sel];
-  Object.entries(DH3.cache).forEach(([k,root])=>{root.visible=k===sex});
   const root=DH3.cache[sex];if(!root)return;
+  if((DH3.layers.muscles||sel==='musc')&&!DH3.layerState.muscles)dh3LoadLayer('muscles');
   if(DH3.shown!==sex){
     DH3.shown=sex;
     const box=new T.Box3().setFromObject(root),size=box.getSize(new T.Vector3()),c=box.getCenter(new T.Vector3());
@@ -1185,14 +1211,16 @@ function dh3Apply(sex,counts,sel){
   root.userData.skinMat.uniforms.uBoost.value=sel==='inte'?.35:sel==='all'?(counts.inte?.2:0):-.05;
   root.traverse(m=>{
     if(!m.isMesh)return;
-    if(m.userData.grp==='skin'){m.visible=DH3.layers.skin&&sel!=='skel';return}
-    const sys=m.userData.sys,grp=m.userData.grp,isSel=sel!=='all'&&sys===sel,hasVisits=sys&&counts[sys],mat=m.material;
+    const u=m.userData;
+    if(u.sex&&u.sex!==sex){m.visible=false;return}
+    if(u.grp==='skin'){m.visible=DH3.layers.skin&&!u.hidden&&sel!=='skel';return}
+    const sys=u.sys,grp=u.grp,isSel=sel!=='all'&&sys===sel,hasVisits=sys&&counts[sys],mat=m.material;
     m.visible=sel==='skel'?grp==='skeleton':grp==='muscles'?(DH3.layers.muscles||sel==='musc'):DH3.layers[grp]!==false;
-    const hot=DH3.hoverKey&&dh3KeyOf(m)===DH3.hoverKey;
+    const hot=DH3.hoverKey&&u.key===DH3.hoverKey;
     let op=baseOpacity[grp]??1;
-    if(sel!=='all')op=isSel?(grp==='skeleton'?1:1):.12;
+    if(sel!=='all')op=isSel?1:.12;
     else if(anyVisits&&!hasVisits)op=Math.min(op,.35);
-    const headPart=sel==='musc'&&DH3_HEAD.has(dh3KeyOf(m));
+    const headPart=sel==='musc'&&u.head;
     if(headPart){op=1;m.visible=true}
     if(hot)op=1;
     mat.emissive.setHex(hot?0xff7a2f:0xe5391b);mat.emissiveIntensity=hot?.75:(grp!=='muscles'&&(isSel||(sel==='all'&&hasVisits))?.15:0);
@@ -1206,7 +1234,7 @@ function dh3Rays(e,onlyOrgans){
   DH3.ray.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1),DH3.camera);
   const meshes=[];root.traverse(m=>{
     if(!m.isMesh||!m.visible||m.userData.grp==='skin')return;
-    if(onlyOrgans&&m.userData.grp!=='organs'&&m.userData.grp!=='muscles'&&m.userData.grp!=='skeleton')return;
+    if(onlyOrgans&&!DH3_HOVER_GROUPS.has(m.userData.grp))return;
     meshes.push(m)
   });
   return DH3.ray.intersectObjects(meshes,false)
@@ -1219,8 +1247,8 @@ const DH3_INFO={skull:'protects the brain and shapes the face',mandible:'the low
 function dh3Hover(e){
   const sel=DH3.last?DH3.last[2]:'all',hit=dh3Rays(e,true).find(h=>sel==='all'||h.object.userData.sys===sel);
   if(!hit)return dh3SetHover(null,'');
-  const key=dh3KeyOf(hit.object),sys=DH_SYSTEMS.find(x=>x[0]===hit.object.userData.sys);
-  dh3SetHover(key,(sys?sys[1]+': ':'')+(DH3_LABELS[key]||key)+(DH3_INFO[key]?' - '+DH3_INFO[key]:''))
+  const u=hit.object.userData,key=u.key,sys=DH_SYSTEMS.find(x=>x[0]===u.sys);
+  dh3SetHover(key,(sys?sys[1]+': ':'')+(u.label||key)+(DH3_INFO[key]?' - '+DH3_INFO[key]:''))
 }
 function dh3SetHover(key,text){
   const tip=$('dh3tip');if(tip){tip.textContent=text;tip.style.display=text?'block':'none'}
