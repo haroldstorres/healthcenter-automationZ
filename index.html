@@ -773,6 +773,25 @@ function rpCalc(){
   });
   c.morb=Object.values(m).sort((x,y)=>y.t-x.t||x.n.localeCompare(y.n));
   c.brg=Object.entries(b).sort((x,y)=>y[1]-x[1]);
+  // YAKAP enrolment, from the patient records
+  const en=P.filter(p=>p.yak&&p.yak.st==='enrolled'),enIds=new Set(en.map(p=>p.id));
+  c.yak={pts:P.length,fpe:P.filter(p=>p.fpe).length,en:en.length,pend:P.filter(p=>p.yak&&p.yak.st==='pending').length,enNew:en.filter(p=>p.yak.date&&p.yak.date>=f&&p.yak.date<=t).length,enSeen:new Set(vs.filter(v=>enIds.has(v.pid)).map(v=>v.pid)).size};
+  // patients seen by sex and age
+  const seen=new Map();vs.forEach(v=>{if(!seen.has(v.pid))seen.set(v.pid,pm.get(v.pid))});
+  const bands=[['Under 5',0,4],['5-17',5,17],['18-59',18,59],['60 and over',60,200]];
+  c.seen=bands.map(([n,lo,hi])=>{let M=0,F=0;seen.forEach(p=>{if(!p||!p.dob)return;const a=ageAt(p.dob,t);if(a>=lo&&a<=hi){if(p.sex==='M')M++;else if(p.sex==='F')F++}});return[n,M,F,M+F]});
+  c.seenNoAge=[...seen.values()].filter(p=>!p||!p.dob).length;
+  // referrals by destination
+  const rf={};vs.filter(v=>v.referral).forEach(v=>{const k=String(v.referral.to||'Not stated').trim()||'Not stated';rf[k]=(rf[k]||0)+1});
+  c.rfd=Object.entries(rf).sort((x,y)=>y[1]-x[1]||x[0].localeCompare(y[0]));
+  // hypertension and diabetes: patients seen, and BP on the latest visit with a reading (clinic measure, 140/90)
+  const ch={htn:{n:'Hypertension',ic:/^I1[0-5]/,rx:/hypertens|\bhtn\b/i,p:new Map()},dm:{n:'Diabetes',ic:/^E1[0-4]/,rx:/diabet|\bdm\b/i,p:new Map()}};
+  [...vs].sort((x,y)=>(x.d||'').localeCompare(y.d||'')).forEach(v=>{
+    const txt=(v.dx||'')+' '+(v.cc||'');
+    Object.values(ch).forEach(k=>{if((v.icd||[]).some(i=>i&&k.ic.test(i.code||''))||k.rx.test(txt))k.p.set(v.pid,1)})
+  });
+  const lastBp={};[...vs].sort((x,y)=>(x.d||'').localeCompare(y.d||'')).forEach(v=>{const a=v.vitals||{};if(a.bps!=null&&a.bpd!=null)lastBp[v.pid]=a});
+  c.chr=Object.values(ch).map(k=>{const ids=[...k.p.keys()],row={n:k.n,t:ids.length};if(k.n==='Hypertension'){const w=ids.filter(i=>lastBp[i]);row.bp=w.length;row.ok=w.filter(i=>lastBp[i].bps<140&&lastBp[i].bpd<90).length}return row});
   if(D.im){
     const inR=D.im.filter(x=>x.d>=f&&x.d<=t),cnt={};inR.forEach(x=>{cnt[x.vax]=(cnt[x.vax]||0)+1});
     c.vx=VAX.map(v=>[v[1],cnt[v[0]]||0]).filter(x=>x[1]>0);c.vxN=inR.length;
@@ -790,6 +809,10 @@ function rpSections(){
   const c=RP.c,D=RP.d,pct=(a,b)=>b?Math.round(a/b*100)+'%':'-',S=[];
   S.push(['Summary',rpTab(['Measure','Value'],[['Consultations',c.cons],['Patients seen',c.uniq],['New patients registered',c.newp],['Referrals',c.refs]].concat(c.u2!==undefined?[['Children under 2 with complete vaccines (as of today)',c.u2ok+' of '+c.u2+' ('+pct(c.u2ok,c.u2)+')']]:[]),'')]);
   S.push(['Morbidity: most common diagnoses',D.vs===null?'<p class="er2">Could not load consultations.</p>':rpTab(['Diagnosis','Total','Male','Female','Under 5','5-17','18-59','60+'],c.morb.slice(0,25).map(r=>[r.n,r.t,r.M,r.F,r.u5,r.c,r.a,r.s]),'No consultations with a diagnosis in this period.')+(c.morb.length>25?`<p style="color:var(--mu);font-size:13px">Showing the top 25 of ${c.morb.length} diagnoses.</p>`:'')+'<p style="color:var(--mu);font-size:13px;margin:6px 0 0">Counted from the typed diagnosis. A visit with two diseases counts once for each.</p>']);
+  S.push(['YAKAP and patient registry',rpTab(['Measure','Value'],[['Registered patients (all time)',c.yak.pts],['First Patient Encounter (FPE) completed',c.yak.fpe+' of '+c.yak.pts+' ('+pct(c.yak.fpe,c.yak.pts)+')'],['YAKAP enrolled (all time)',c.yak.en],['YAKAP pending (YES slip not signed)',c.yak.pend],['Enrolled within this period',c.yak.enNew],['Enrolled patients seen within this period',c.yak.enSeen]],'')]);
+  S.push(['Patients seen by age and sex',D.vs===null?'':rpTab(['Age group','Male','Female','Total'],c.seen,'')+(c.seenNoAge?`<p style="color:var(--mu);font-size:13px;margin:6px 0 0">${c.seenNoAge} patient${c.seenNoAge===1?'':'s'} seen without a birth date are not counted here.</p>`:'')]);
+  S.push(['Hypertension and diabetes',D.vs===null?'':rpTab(['Condition','Patients seen','With a BP reading','BP under 140/90 (latest reading)'],c.chr.map(x=>[x.n,x.t,x.bp===undefined?'-':x.bp,x.bp===undefined?'-':x.ok+(x.bp?' ('+pct(x.ok,x.bp)+')':'')]),'')+'<p style="color:var(--mu);font-size:13px;margin:6px 0 0">Patients whose visit in this period has a matching ICD-10 code (I10-I15, E10-E14) or diagnosis wording. The BP target is a simple clinic measure, not an official indicator.</p>']);
+  S.push(['Referrals by destination',D.vs===null?'':rpTab(['Referred to','Referrals'],c.rfd,'No referrals in this period.')]);
   S.push(['Consultations by barangay',D.vs===null?'':rpTab(['Barangay','Consultations'],c.brg.slice(0,15),'No consultations in this period.')]);
   S.push(['Immunization',D.im===null?'<p class="er2">Could not load immunization records.</p>':rpTab(['Vaccine','Doses given'],c.vx.concat(c.vxN?[['Total',c.vxN]]:[]),'No vaccines recorded in this period.')]);
   S.push(['Medicines prescribed',D.rx===null?'<p style="color:var(--mu)">Prescriptions can be read by doctor and midwife accounts only.</p>':rpTab(['Medicine','Times prescribed','Total quantity'],c.med.slice(0,20).map(x=>[x.n,x.c,x.q||'-']),'No prescriptions in this period.')+'<p style="color:var(--mu);font-size:13px;margin:6px 0 0">Prescribed, not dispensed. Rejected prescriptions are not counted.</p>']);
@@ -813,6 +836,10 @@ function rpCsv(){
   if(c.u2!==undefined)r.push(['Children under 2 with complete vaccines (as of today)',c.u2ok,'of',c.u2]);
   r.push([],['Morbidity'],['Diagnosis','Total','Male','Female','Under 5','5-17','18-59','60+']);c.morb.forEach(x=>r.push([x.n,x.t,x.M,x.F,x.u5,x.c,x.a,x.s]));
   r.push([],['Consultations by barangay'],['Barangay','Consultations']);c.brg.forEach(x=>r.push(x));
+  r.push([],['YAKAP and patient registry'],['Registered patients',c.yak.pts],['FPE completed',c.yak.fpe],['YAKAP enrolled (all time)',c.yak.en],['YAKAP pending',c.yak.pend],['Enrolled within period',c.yak.enNew],['Enrolled patients seen within period',c.yak.enSeen]);
+  r.push([],['Patients seen by age and sex'],['Age group','Male','Female','Total']);c.seen.forEach(x=>r.push(x));
+  r.push([],['Hypertension and diabetes'],['Condition','Patients seen','With a BP reading','BP under 140/90']);c.chr.forEach(x=>r.push([x.n,x.t,x.bp===undefined?'':x.bp,x.bp===undefined?'':x.ok]));
+  r.push([],['Referrals by destination'],['Referred to','Referrals']);c.rfd.forEach(x=>r.push(x));
   if(D.im){r.push([],['Immunization'],['Vaccine','Doses given']);c.vx.forEach(x=>r.push(x))}
   if(D.rx){r.push([],['Medicines prescribed'],['Medicine','Times prescribed','Total quantity']);c.med.forEach(x=>r.push([x.n,x.c,x.q||'']))}
   ioDl('report-'+RP.from+'-to-'+RP.to+'.csv',r);lg('Downloaded report CSV '+RP.from+' to '+RP.to)
