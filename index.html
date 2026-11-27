@@ -243,6 +243,8 @@ const anyBusy=()=>{const a=document.activeElement;return !!a&&/^(INPUT|SELECT|TE
 const LT={};
 function lvDefer(key,fn,ms){clearTimeout(LT[key]);let n=0;const go=()=>{if(!U||mode!=='app')return;if(anyBusy()&&n++<15){LT[key]=setTimeout(go,2000);return}try{fn()}catch(e){}};LT[key]=setTimeout(go,ms||600)}
 const lvScroll=f=>{const y=scrollY;f();scrollTo(0,y)};
+// Waiting times change with the clock, so repaint the queue screens every 30 seconds (skipped while someone is typing in them).
+setInterval(()=>{try{if(U&&mode==='app'&&['queue','pharm','lab','imm'].includes(pg))qLive()}catch(e){}},30000);
 function dashRefresh(){lvDefer('dash',()=>{if(pg!=='dash')return;if(alOn())loadAl();if(CROLES.includes(U.role))loadFu();if(U.role==='doctor')loadDr();if(U.role==='pharmacist')loadPd();if(U.role==='medtech')loadMt();if($('dxs'))loadDx()})}
 function dashRepaint(){lvDefer('dashp',()=>{if(pg==='dash')lvScroll(R)})}
 let PPS={pid:'',sig:''};
@@ -1659,7 +1661,7 @@ const stCard=k=>SROLE[k].includes(U.role)?`<div class="cd ov"><h3 style="margin-
 function stList(k){
   const l=Q.filter(x=>x.station===k&&['waiting','in-consult'].includes(x.status));
   if(!l.length)return '<p style="color:var(--mu)">No one is waiting here.</p>';
-  return `<table><thead><tr><th>No.</th><th>Patient</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>${l.map(x=>`<tr><td>${qn(x.num)}</td><td>${E(x.name)}</td><td>${E(x.reason||'')}</td><td><span class="tg ${x.status==='in-consult'?'ok':'wa'}">${x.status==='in-consult'?'Called':'Waiting'}</span>${x.status==='in-consult'&&x.byName?`<br><small style="color:var(--mu)">by ${E(x.byName)}</small>`:''}</td><td>${x.status==='waiting'?`<button class="bt" onclick="stCall('${x.id}')">Call</button>`:`<button class="bt g" onclick="stCall('${x.id}',this)">Call again</button> <button class="bt g" onclick="stBack('${x.id}')">Return to waiting</button> <button class="bt" onclick="stDone('${x.id}')">Done</button>`}</td></tr>`).join('')}</tbody></table>`}
+  return `<table><thead><tr><th>No.</th><th>Patient</th><th>Reason</th><th>Status</th><th>In clinic</th><th></th></tr></thead><tbody>${l.map(x=>`<tr><td>${qn(x.num)}</td><td>${E(x.name)}</td><td>${E(x.reason||'')}</td><td><span class="tg ${x.status==='in-consult'?'ok':'wa'}">${x.status==='in-consult'?'Called':'Waiting'}</span>${x.status==='in-consult'&&x.byName?`<br><small style="color:var(--mu)">by ${E(x.byName)}</small>`:''}</td><td>${qWait(x)}</td><td>${x.status==='waiting'?`<button class="bt" onclick="stCall('${x.id}')">Call</button>`:`<button class="bt g" onclick="stCall('${x.id}',this)">Call again</button> <button class="bt g" onclick="stBack('${x.id}')">Return to waiting</button> <button class="bt" onclick="stDone('${x.id}')">Done</button>`}</td></tr>`).join('')}</tbody></table>`}
 async function stCall(id,el){
   const x=Q.find(e=>e.id===id);if(!x||isC(x)||!SROLE[x.station]||!SROLE[x.station].includes(U.role))return;
   try{
@@ -1690,11 +1692,28 @@ async function stDone(id){
 }
 const ST={waiting:['wa','Waiting'],'in-consult':['ok','In consultation'],done:['ok','Done'],cancelled:['mt','Cancelled'],'no-show':['mt','Not seen']};
 const stOf=x=>isC(x)&&x.status==='in-consult'&&x.called?['wa','Called']:(ST[x.status]||['wa',x.status]);
+/* Waiting time: counted from the moment the patient was added to today's queue (field 'at'). */
+const qMs=t=>t&&t.seconds?t.seconds*1000:null;
+const qMin=(a,b)=>Math.max(0,Math.round(((b==null?Date.now():b)-a)/60000));
+const qDur=m=>m<60?m+' min':Math.floor(m/60)+' h '+(m%60?m%60+' min':'');
+const qOpen=x=>x.status==='waiting'||x.status==='in-consult';
+function qWait(x){
+  const a=qMs(x.at)??(qOpen(x)?Date.now():null);if(a==null)return '<span style="color:var(--mu)">-</span>';
+  if(qOpen(x)){const m=qMin(a);return `<span class="tg ${m>=60?'er':m>=30?'wa':'ok'}">${qDur(m)}</span><br><small style="color:var(--mu)">in clinic since ${qTm(x.at)||'now'}</small>`}
+  const s=isC(x)?qMs(x.startedAt):null;
+  return s?`<small style="color:var(--mu)">Waited ${qDur(qMin(a,s))} before consultation</small>`:'<span style="color:var(--mu)">-</span>'
+}
+function qSummary(){
+  const op=Q.filter(qOpen),w=Q.filter(x=>x.status==='waiting'),ws=w.map(x=>qMin(qMs(x.at)??Date.now())),mx=ws.length?Math.max(...ws):0,
+    sd=Q.filter(x=>isC(x)&&qMs(x.at)&&qMs(x.startedAt)).map(x=>qMin(qMs(x.at),qMs(x.startedAt))),av=sd.length?Math.round(sd.reduce((a,b)=>a+b,0)/sd.length):null,
+    c=(n,t,w)=>`<div class="cd" style="margin:0;padding:10px 12px"><div style="color:var(--mu);font-size:13px">${t}</div><div style="font-size:22px;font-weight:600${w?';color:var(--er)':''}">${n}</div></div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px">${c(op.length,'In the clinic now')+c(w.length,'Waiting')+c(w.length?qDur(mx):'-','Longest wait now',mx>=60)+c(av===null?'-':qDur(av),'Average wait before consultation')}</div><p style="color:var(--mu);font-size:12px;margin:-4px 0 10px">Time is counted from when the patient was added to today's queue. The average only includes patients seen directly by a doctor or midwife (patients sent on to Lab, Pharmacy or Immunization are not counted).</p>`
+}
 function qTable(){
   if(qmsg)return `<p class="er2">${E(qmsg)}</p>`;
   if(!Q.length)return '<p style="color:var(--mu)">No one in the queue yet today.</p>';
-  return roomBar()+`<table><thead><tr><th>No.</th><th>Patient</th><th>Reason</th><th>Vitals</th><th>Status</th><th></th></tr></thead><tbody>${Q.map(x=>{const st=stOf(x),open=x.status==='waiting'||x.status==='in-consult';
-    return `<tr><td>${qn(x.num)}</td><td><a href="#" onclick="view('${x.pid}');return false">${E(x.name)}</a>${qTags(x)}</td><td>${x.reason?E(x.reason)+qBy(x.reasonBy,x.reasonAt):'<span style="color:var(--mu)">-</span>'}${isC(x)?'':`<br><small style="color:var(--mu)">At ${STN[x.station]||E(x.station)}</small>`}</td><td>${E(vsum(x.vitals))?E(vsum(x.vitals))+qBy(x.vitalsBy,x.vitalsAt):'<span style="color:var(--mu)">-</span>'}</td><td><span class="tg ${st[0]}">${st[1]}</span>${qWho(x)}</td><td>${open&&canVitals()?`<button class="bt g" onclick="vOpen('${x.id}')">Vitals</button> `:''}${open&&canReason()?`<button class="bt g" onclick="rOpen('${x.id}')">Reason</button> `:''}${x.status==='waiting'&&isC(x)&&CROLES.includes(U.role)?`<button class="bt" onclick="callQ('${x.id}')">Call</button> `:''}${open&&isC(x)&&CROLES.includes(U.role)?`<button class="bt g" onclick="startQ('${x.id}')">${x.status==='waiting'?'Start consult':'Continue'}</button> `:''}${x.status==='in-consult'&&isC(x)&&CROLES.includes(U.role)?`<button class="bt g" onclick="recallQ('${x.id}',this)">Call again</button> <button class="bt g" onclick="releaseQ('${x.id}')">Return to waiting</button> `:''}${x.status==='waiting'&&canEdit()?`<button class="bt g dn" onclick="qCancel('${x.id}')">Cancel</button>`:''}</td></tr>${vq===x.id?vForm(x):''}${rqo===x.id?rForm(x):''}`}).join('')}</tbody></table>`}
+  return qSummary()+roomBar()+`<table><thead><tr><th>No.</th><th>Patient</th><th>Reason</th><th>Vitals</th><th>Status</th><th>Wait</th><th></th></tr></thead><tbody>${Q.map(x=>{const st=stOf(x),open=x.status==='waiting'||x.status==='in-consult';
+    return `<tr><td>${qn(x.num)}</td><td><a href="#" onclick="view('${x.pid}');return false">${E(x.name)}</a>${qTags(x)}</td><td>${x.reason?E(x.reason)+qBy(x.reasonBy,x.reasonAt):'<span style="color:var(--mu)">-</span>'}${isC(x)?'':`<br><small style="color:var(--mu)">At ${STN[x.station]||E(x.station)}</small>`}</td><td>${E(vsum(x.vitals))?E(vsum(x.vitals))+qBy(x.vitalsBy,x.vitalsAt):'<span style="color:var(--mu)">-</span>'}</td><td><span class="tg ${st[0]}">${st[1]}</span>${qWho(x)}</td><td>${qWait(x)}</td><td>${open&&canVitals()?`<button class="bt g" onclick="vOpen('${x.id}')">Vitals</button> `:''}${open&&canReason()?`<button class="bt g" onclick="rOpen('${x.id}')">Reason</button> `:''}${x.status==='waiting'&&isC(x)&&CROLES.includes(U.role)?`<button class="bt" onclick="callQ('${x.id}')">Call</button> `:''}${open&&isC(x)&&CROLES.includes(U.role)?`<button class="bt g" onclick="startQ('${x.id}')">${x.status==='waiting'?'Start consult':'Continue'}</button> `:''}${x.status==='in-consult'&&isC(x)&&CROLES.includes(U.role)?`<button class="bt g" onclick="recallQ('${x.id}',this)">Call again</button> <button class="bt g" onclick="releaseQ('${x.id}')">Return to waiting</button> `:''}${x.status==='waiting'&&canEdit()?`<button class="bt g dn" onclick="qCancel('${x.id}')">Cancel</button>`:''}</td></tr>${vq===x.id?vForm(x):''}${rqo===x.id?rForm(x):''}`}).join('')}</tbody></table>`}
 const qpg=()=>`<h2 style="margin-top:0">Queue</h2><p style="color:var(--mu);margin-top:-6px">${new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>${canReg()?`<div class="cd"><h3 style="margin-top:0">Add patient to queue</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><input id="qsrch" placeholder="Search patient by name or ID" oninput="qSearch(this.value)" autocomplete="off" style="flex:1;min-width:200px"><button type="button" class="bt" onclick="qNew()">+ New patient</button></div><div id="qres" style="margin-top:8px"></div><div class="er2" id="qe"></div></div>`:''}<div class="cd ov"><div id="qt">${qTable()}</div>${canEdit()?'<div style="margin-top:10px"><button class="bt g" onclick="qClose()">Close the day</button> <small style="color:var(--mu)">Marks everyone still waiting as "Not seen".</small></div>':''}</div>`;
 function qSearch(v){
   const s=v.trim().toLowerCase(),r=$('qres');if(!s){r.innerHTML='';return}
