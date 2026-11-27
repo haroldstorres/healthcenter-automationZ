@@ -103,7 +103,7 @@ const IMR=['doctor','midwife','bhw','admin','developer'];
 const PNR=['doctor','midwife','bhw','developer'];
 // Inventory: read-only view of medicine and vaccine stock (pharmacists see medicines only).
 const INVR=['pharmacist','doctor','midwife','admin','developer'];
-const NAV=[['dash','Dashboard'],['patients','Patients'],['hh','Households'],['queue','Queue',0,QROLES],['consult','Consultation',0,CROLES],['appr','Rx approvals',0,['doctor']],['ref','Referrals',0,['doctor','midwife','developer']],['mc','My consultations',0,['doctor','midwife','developer']],['fu','Follow-ups',0,['doctor','midwife','developer']],['imm','Immunization',0,IMR],['pn','Prenatal',0,PNR],['pharm','Pharmacy',0,['pharmacist']],['lab','Lab',0,['medtech']],['inv','Inventory',0,INVR],['rp','Reports & Data',0,['doctor','midwife','developer','admin','frontdesk']],['io','Import / Export',0,['developer','admin','doctor','midwife','frontdesk'],1],['audit','Audit log',0,['admin','developer'],1],['ann','Announcements',0,[]],['users','Users',0,['admin','developer']],['set','Settings',0,['admin','developer']],['dev','Developer',0,['developer'],1]];
+const NAV=[['dash','Dashboard'],['patients','Patients'],['hh','Households'],['queue','Queue',0,QROLES],['consult','Consultation',0,CROLES],['appr','Rx approvals',0,['doctor']],['ref','Referrals',0,['doctor','midwife','developer']],['mc','My consultations',0,['doctor','midwife','developer']],['fu','Recall board',0,['doctor','midwife','developer']],['imm','Immunization',0,IMR],['pn','Prenatal',0,PNR],['pharm','Pharmacy',0,['pharmacist']],['lab','Lab',0,['medtech']],['inv','Inventory',0,INVR],['rp','Reports & Data',0,['doctor','midwife','developer','admin','frontdesk']],['io','Import / Export',0,['developer','admin','doctor','midwife','frontdesk'],1],['audit','Audit log',0,['admin','developer'],1],['ann','Announcements',0,[]],['users','Users',0,['admin','developer']],['set','Settings',0,['admin','developer']],['dev','Developer',0,['developer'],1]];
 const NAVSEC={patients:'Clinical',rp:'Records',ann:'Admin',users:'Admin'};
 const tabsBar=l=>{l=l.filter(x=>x[2]);return l.length<2?'':`<div class="dt" style="margin:0 0 14px">${l.map(([k,t])=>`<button class="bt${pg===k?'':' g'}" onclick="go('${k}')">${t}</button>`).join('')}</div>`};
 const dataTabs=()=>tabsBar([['rp','Reports',RPR.includes(U.role)],['io','Import / Export',canReg()||isAdm()],['audit','Audit log',isAdm()]]);
@@ -2679,21 +2679,75 @@ function printList(title,head,rows){
   d.write('<!doctype html><html><head><meta charset="utf-8"><title>'+E(title)+'</title><style>'+css+'</style></head><body><h1>'+E(lh().name)+'</h1><div class="s">'+E(title)+' | '+E(longD(today()))+' | Printed by '+E(U.name)+'</div><table><thead><tr>'+head.map(h=>'<th>'+E(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+E(c)+'</td>').join('')+'</tr>').join('')+'</tbody></table></body></html>');
   d.close();w.onafterprint=()=>f.remove();setTimeout(()=>{try{w.focus();w.print()}catch(e){sAlert('Could not open the print dialog.')}},300);setTimeout(()=>f.remove(),120000)
 }
-/* ---------- Follow-ups page: consultation follow-ups and prenatal check-ups in one worklist ---------- */
-let FUF='all',FUT='all',FUQ='',FUB='';
+/* ---------- Recall board: follow-ups, prenatal check-ups, vaccines due and chronic-care check-ups in one worklist ---------- */
+let FUF='all',FUT='all',FUS='all',FUQ='',FUB='';
+let RC=null,RCT=0,RCL=false,RCE=false;
+// Clinic rule (not an official DOH/PhilHealth rule): a patient with hypertension or diabetes should be seen again within this many days
+const RC_CHRONIC_DAYS=90,RC_LOOKBACK_DAYS=365,RC_LOOKAHEAD_DAYS=30;
+const RC_ST=[['','Not yet contacted'],['contacted','Contacted'],['will','Will come'],['unreach',"Can't reach"]];
+const RC_TYPES=[['c','Consultation','ok'],['p','Prenatal','wa'],['v','Vaccine due','wa'],['h','Chronic care','er']];
 const fuTg=d=>{const n=fuDays(d);return n<0?tgh('Overdue '+(-n)+' day'+(n===-1?'':'s'),'er'):n===0?tgh('Today','wa'):tgh(n===1?'Tomorrow':'In '+n+' days','ok')};
 const fuBand=d=>{const n=fuDays(d);return n<0?'over':n===0?'today':n<=7?'week':'later'};
+const rcAddDays=(d,n)=>new Date(new Date(d+'T00:00:00').getTime()+n*864e5).toLocaleDateString('en-CA');
+async function loadRc(){
+  if(RCL)return;RCL=true;
+  try{
+    const [im,vs]=await Promise.all([getDocs(collection(db,'immunizations')),getDocs(query(collection(db,'visits'),where('d','>=',dstr(RC_LOOKBACK_DAYS))))]);
+    const m={};im.docs.forEach(d=>{m[d.id]=1});
+    RC={im:m,vs:vs.docs.map(d=>d.data())};RCE=false
+  }catch(x){RCE=true;if(!RC)RC={im:{},vs:[]}}
+  RCT=Date.now();RCL=false;
+  if(pg==='fu')lvScroll(R)
+}
+function rcEnsure(){if(!RCL&&(!RC||Date.now()-RCT>12e4))setTimeout(loadRc,0)}
+// one row per patient and rule; the status of a row is kept on the patient record
+function rcVaccines(){
+  const o=[];if(!RC)return o;
+  P.forEach(p=>{
+    if(!p.dob||isNaN(new Date(p.dob)))return;
+    const a=dAge(p.dob);if(a<0||a>730)return;
+    const miss=VAX.filter(v=>a>=v[2]&&!RC.im[p.id+'_'+v[0]]);if(!miss.length)return;
+    const first=Math.min(...miss.map(v=>v[2]));
+    o.push({k:'v',key:'v',pid:p.id,name:pn(p),due:rcAddDays(p.dob,first),why:miss.map(v=>v[1]).join(', ')})
+  });
+  return o
+}
+function rcChronic(){
+  const o=[];if(!RC)return o;
+  const rules=[['htn','Hypertension',/^I1[0-5]/,/hypertens|\bhtn\b/i],['dm','Diabetes',/^E1[0-4]/,/diabet|\bdm\b/i]];
+  const last={};
+  RC.vs.forEach(v=>{
+    if(!v.pid||!v.d)return;
+    const txt=(v.dx||'')+' '+(v.cc||'');
+    rules.forEach(([id,,ic,rx])=>{
+      if((v.icd||[]).some(c=>c&&ic.test(c.code||''))||rx.test(txt)){const k=v.pid+'|'+id;if(!last[k]||v.d>last[k])last[k]=v.d}
+    })
+  });
+  const byP={};
+  Object.entries(last).forEach(([k,d])=>{const [pid,id]=k.split('|');(byP[pid]=byP[pid]||[]).push([id,d])});
+  Object.entries(byP).forEach(([pid,l])=>{
+    const p=P.find(x=>x.id===pid);if(!p)return;
+    const conds=l.map(([id,d])=>({n:rules.find(r=>r[0]===id)[1],d}));
+    const lastSeen=conds.map(c=>c.d).sort().pop(),due=rcAddDays(lastSeen,RC_CHRONIC_DAYS);
+    if(fuDays(due)>RC_LOOKAHEAD_DAYS)return;
+    o.push({k:'h',key:'h',pid,name:pn(p),due,why:conds.map(c=>c.n).join(' + ')+' check-up (last seen '+lastSeen+')'})
+  });
+  return o
+}
 function fuItems(){
   const o=[];
-  (FU||[]).forEach(v=>o.push({k:'c',id:v.id,pid:v.pid,name:v.pname,due:v.fu,why:v.fun||'Follow-up'}));
-  (PN||[]).filter(x=>x.status==='active'&&x.nv).forEach(x=>o.push({k:'p',id:x.id,pid:x.pid,name:x.pname,due:x.nv,why:'check-up'}));
+  (FU||[]).forEach(v=>o.push({k:'c',key:'c'+String(v.id).replace(/[^A-Za-z0-9_]/g,'_'),id:v.id,pid:v.pid,name:v.pname,due:v.fu,why:v.fun||'Follow-up'}));
+  (PN||[]).filter(x=>x.status==='active'&&x.nv).forEach(x=>o.push({k:'p',key:'p'+String(x.id).replace(/[^A-Za-z0-9_]/g,'_'),id:x.id,pid:x.pid,name:x.pname,due:x.nv,why:'check-up'}));
+  rcVaccines().forEach(x=>o.push(x));rcChronic().forEach(x=>o.push(x));
   return o.sort((a,b)=>a.due.localeCompare(b.due)||(a.name||'').localeCompare(b.name||''))
 }
+const rcSt=x=>{const p=P.find(y=>y.id===x.pid),e=p&&p.rcl&&p.rcl[x.key];return e&&e.due===x.due?e.st||'':''};
 function fuList(){
   const s=FUQ.toLowerCase();
   return fuItems().filter(x=>{
     const p=P.find(y=>y.id===x.pid);
     if(FUT!=='all'&&x.k!==FUT)return false;
+    if(FUS!=='all'&&rcSt(x)!==(FUS==='none'?'':FUS))return false;
     if(FUB&&(!p||p.br!==FUB))return false;
     if(FUF!=='all'&&fuBand(x.due)!==FUF)return false;
     return !s||(x.name||'').toLowerCase().includes(s)
@@ -2701,30 +2755,50 @@ function fuList(){
 }
 function fuRows(){
   const l=fuList(),can=CROLES.includes(U.role);
-  return l.length?l.map(x=>{const p=P.find(y=>y.id===x.pid);
-    return `<tr><td><a href="#" onclick="view('${E(x.pid)}');return false">${E(x.name)}</a><small style="display:block;color:var(--mu)">${E(p?p.pu+', '+p.br:'')}</small></td><td>${E((p&&p.tel)||'')}</td><td>${tgh(x.k==='p'?'Prenatal':'Consultation',x.k==='p'?'wa':'ok')} ${E(x.why)}</td><td style="white-space:nowrap">${E(x.due)}</td><td>${fuTg(x.due)}</td><td style="white-space:nowrap">${can?(x.k==='c'?`<button class="bt g" onclick="fuDone('${x.id}')">Done</button>`:`<button class="bt g" onclick="pnVisit('${x.id}')">Record visit</button>`):''}</td></tr>`}).join('')
-  :'<tr><td colspan="6">Nothing matches this filter.</td></tr>'
+  return l.length?l.map(x=>{const p=P.find(y=>y.id===x.pid),t=RC_TYPES.find(r=>r[0]===x.k),st=rcSt(x);
+    const act=!can?'':x.k==='c'?`<button class="bt g" onclick="fuDone('${x.id}')">Done</button>`:x.k==='p'?`<button class="bt g" onclick="pnVisit('${x.id}')">Record visit</button>`:x.k==='v'?`<button class="bt g" onclick="go('imm')">Immunization</button>`:`<button class="bt g" onclick="view('${E(x.pid)}')">Open record</button>`;
+    const sel=can?`<select style="width:auto;min-width:130px" onchange="rcSet('${x.key}','${E(x.pid)}','${x.due}',this.value)">${RC_ST.map(([k,n])=>`<option value="${k}" ${st===k?'selected':''}>${n}</option>`).join('')}</select>`:E((RC_ST.find(r=>r[0]===st)||RC_ST[0])[1]);
+    return `<tr><td><a href="#" onclick="view('${E(x.pid)}');return false">${E(x.name)}</a><small style="display:block;color:var(--mu)">${E(p?p.pu+', '+p.br:'')}</small></td><td>${E((p&&p.tel)||'')}</td><td>${tgh(t[1],t[2])} ${E(x.why)}</td><td style="white-space:nowrap">${E(x.due)}</td><td>${fuTg(x.due)}</td><td>${sel}</td><td style="white-space:nowrap">${act}</td></tr>`}).join('')
+  :'<tr><td colspan="7">Nothing matches this filter.</td></tr>'
 }
 function fup(){
-  const h='<h2 style="margin-top:0">Follow-ups</h2><p style="color:var(--mu);margin-top:-6px">Patients asked to come back after a consultation, and pregnant patients with a prenatal check-up scheduled. Vaccines that are due are on the Immunization page.</p>';
+  const h='<h2 style="margin-top:0">Recall board</h2><p style="color:var(--mu);margin-top:-6px">Everyone who should come back: consultation follow-ups, prenatal check-ups, children with vaccines due, and patients with hypertension or diabetes who are due for a check-up. Note who you have already contacted.</p>';
   if(FUE)return h+'<div class="cd"><p class="er2" style="margin:0">Could not load follow-ups. Check your connection.</p></div>';
   if(FU===null||(PN===null&&!PNE))return h+'<div class="cd">Loading...</div>';
+  rcEnsure();
   const all=fuItems(),c=b=>all.filter(x=>fuBand(x.due)===b).length,brs=[...new Set(P.map(p=>p.br))].filter(Boolean).sort();
   const cd=(n,t,w)=>`<div class="cd" style="margin:0;padding:12px"><div style="color:${w?'var(--er)':'var(--mu)'};font-size:13px">${t}</div><div style="font-size:24px;font-weight:600${w?';color:var(--er)':''}">${n}</div></div>`;
   return h+(PNE?`<div class="cd"><p class="er2" style="margin:0">Prenatal check-ups could not be loaded.${PNEC==='permission-denied'?' Publish the latest firestore.rules first.':' Check your connection.'}</p></div>`:'')
+  +(RCE?'<div class="cd"><p class="er2" style="margin:0">Vaccines due and chronic-care reminders could not be loaded. Check your connection, then reopen this page.</p></div>':!RC?'<div class="cd" style="color:var(--mu)">Loading vaccine and chronic-care reminders...</div>':'')
   +`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px">${cd(c('over'),'Overdue',c('over')>0)+cd(c('today'),'Due today')+cd(c('week'),'Next 7 days')+cd(c('later'),'Later')}</div>`
   +`<div class="cd"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">${[['all','All'],['over','Overdue'],['today','Today'],['week','Next 7 days'],['later','Later']].map(([f,t])=>`<button class="bt ${FUF===f?'':'g'}" onclick="fuSetF('${f}')">${t}</button>`).join('')}</div>`
-  +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><select style="width:auto" onchange="fuSetT(this.value)">${[['all','All types'],['c','Consultation'],['p','Prenatal']].map(([k,t])=>`<option value="${k}" ${FUT===k?'selected':''}>${t}</option>`).join('')}</select><select style="width:auto" onchange="fuSetB(this.value)"><option value="">All barangays</option>${brs.map(b=>`<option ${FUB===b?'selected':''}>${E(b)}</option>`).join('')}</select><input placeholder="Search patient" value="${E(FUQ)}" oninput="fuSq(this.value)" style="max-width:220px"><button class="bt g" style="margin-left:auto" onclick="fuPrint()">Print list</button></div>`
-  +`<div class="ov"><table><thead><tr><th>Patient</th><th>Contact</th><th>Reason</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody id="fut">${fuRows()}</tbody></table></div></div>`
+  +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><select style="width:auto" onchange="fuSetT(this.value)">${[['all','All types']].concat(RC_TYPES.map(r=>[r[0],r[1]])).map(([k,t])=>`<option value="${k}" ${FUT===k?'selected':''}>${t}</option>`).join('')}</select><select style="width:auto" onchange="fuSetS(this.value)">${[['all','Any contact status'],['none','Not yet contacted'],['contacted','Contacted'],['will','Will come'],['unreach',"Can't reach"]].map(([k,t])=>`<option value="${k}" ${FUS===k?'selected':''}>${t}</option>`).join('')}</select><select style="width:auto" onchange="fuSetB(this.value)"><option value="">All barangays</option>${brs.map(b=>`<option ${FUB===b?'selected':''}>${E(b)}</option>`).join('')}</select><input placeholder="Search patient" value="${E(FUQ)}" oninput="fuSq(this.value)" style="max-width:220px"><button class="bt g" style="margin-left:auto" onclick="fuPrint()">Print list</button></div>`
+  +`<div class="ov"><table><thead><tr><th>Patient</th><th>Contact</th><th>Reason</th><th>Due</th><th>Timing</th><th>Contact status</th><th></th></tr></thead><tbody id="fut">${fuRows()}</tbody></table></div>`
+  +`<p style="color:var(--mu);font-size:12px;margin:10px 0 0">Chronic-care reminders use ICD-10 codes I10-I15 (hypertension) and E10-E14 (diabetes) or matching words in the diagnosis from the last ${RC_LOOKBACK_DAYS} days, and the check-up interval is ${RC_CHRONIC_DAYS} days. This is a clinic setting, not an official rule. Vaccines due use the schedule on the Immunization page.</p></div>`
 }
 function fuSetF(f){FUF=f;R()}
 function fuSetT(v){FUT=v;R()}
+function fuSetS(v){FUS=v;R()}
 function fuSetB(v){FUB=v;R()}
 function fuSq(v){FUQ=v;const t=$('fut');if(t)t.innerHTML=fuRows()}
+async function rcSet(key,pid,due,val){
+  const p=P.find(x=>x.id===pid);if(!p)return;
+  const old=p.rcl&&p.rcl[key];
+  try{
+    await updateDoc(doc(db,'patients',pid),{['rcl.'+key]:{st:val,due,by:U.name,at:Date.now()}});
+    p.rcl={...(p.rcl||{}),[key]:{st:val,due,by:U.name,at:Date.now()}};
+    await lg('Recall '+pid+': '+(val||'not yet contacted'));
+    const t=$('fut');if(t)t.innerHTML=fuRows()
+  }catch(x){
+    if(old)p.rcl[key]=old;
+    sAlert(x.code==='permission-denied'?'You do not have permission to save the contact status. Publish the latest firestore.rules first.':'Could not save. Check your connection.');
+    const t=$('fut');if(t)t.innerHTML=fuRows()
+  }
+}
 function fuPrint(){
   const l=fuList();if(!l.length)return sAlert('There is nothing to print for this filter.');
-  printList('Follow-up list',['Patient','Contact','Address','Reason','Due date','Status'],l.map(x=>{const p=P.find(y=>y.id===x.pid),n=fuDays(x.due);return[x.name,(p&&p.tel)||'',p?p.pu+', '+p.br:'',(x.k==='p'?'Prenatal ':'')+x.why,x.due,n<0?'Overdue '+(-n)+' d':n===0?'Today':'In '+n+' d']}));
-  lg('Printed follow-up list ('+l.length+')')
+  printList('Recall list',['Patient','Contact','Address','Reason','Due date','Timing','Contact status'],l.map(x=>{const p=P.find(y=>y.id===x.pid),n=fuDays(x.due),t=RC_TYPES.find(r=>r[0]===x.k);return[x.name,(p&&p.tel)||'',p?p.pu+', '+p.br:'',t[1]+': '+x.why,x.due,n<0?'Overdue '+(-n)+' d':n===0?'Today':'In '+n+' d',(RC_ST.find(r=>r[0]===rcSt(x))||RC_ST[0])[1]]}));
+  lg('Printed recall list ('+l.length+')')
 }
 /* ---------- Inventory: medicines and vaccines in one page (read-only; stock is changed in Pharmacy and Immunization) ---------- */
 let INV={m:null,v:null,mE:false,vE:false,lg:null,lgE:false,cap:false},INVT='alerts',INVK='all',INVQ='',INVLT='all',INVF='',INVTo='';
